@@ -24,7 +24,7 @@
   сообщения закрывает span команды. Для воркеров — опция `messages` (описано в README).
 - Ревью 2 (2026-10-01 UTC): один span в `MessageEventListener` путал исходы батчей
   (Received A, Received B, Failed A приписывалось B) — теперь span закрывается только событием
-  своего сообщения, незакрытый — на следующем Received с `acknowledged: false`; listener на
+  своего сообщения, незакрытый — на следующем Received с `message_acknowledged: false`; listener на
   Received с priority -1024, чтобы veto (`shouldHandle(false)`) уже были выставлены.
   Бросающий пользовательский handler ребёнка обрывал `onEnd` и терял span — теперь
   `AbstractSpan::endAt()` вызывает все handlers и бросает первое исключение в конце, а
@@ -35,8 +35,13 @@
   worker, а стек оставался полуоткрытым. Теперь всё «фреймворковое» закрытие идёт через
   `ProfilingFactoryInterface::endSpan()` (лог вместо исключения). Span батча закрывается на
   `WorkerRunningEvent` (priority 0, раньше `kernel.reset` на -1024): иначе reset сначала
-  обнулял listener, и `acknowledged: false` не доходил. `AbstractSpan::end()` final — фабрика
+  обнулял listener, и `message_acknowledged: false` не доходил. `AbstractSpan::end()` final — фабрика
   закрывает детей через `endAt()`, override `end()` пропускался бы.
+- `ResetServicesListener` не подписан в контейнере: `messenger:consume` добавляет его в
+  диспетчер во время работы. Тест порядка сравнивает наш приоритет с
+  `ResetServicesListener::getSubscribedEvents()` установленной версии Symfony.
+- Ревью 4: тест порядка decision makers без `LateDecisionMaker` (-2048) проходил и без
+  `#[AsTaggedItem]` — сервисы приложения регистрируются раньше сервисов бандла.
 - Тест приоритета listener'а: callable брать из `getListeners()`, а не из
   `test.service_container` — для приватного listener'а это может быть другой экземпляр, и
   `getListenerPriority()` вернёт `null` (тест флакал).

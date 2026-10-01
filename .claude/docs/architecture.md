@@ -36,9 +36,10 @@
 - Listener'ы (все `ResetInterface`): `kernel.request` (main, не OPTIONS, `_route` в whitelist) /
   `console.command` (priority 4096) / `WorkerMessageReceivedEvent` (priority -1024, после veto;
   `instanceof` по whitelist); конец — `*.terminate` (затем на -4096 `endAll()`) /
-  Handled/Failed **своего** сообщения (контекст `failed`, `will_retry`), иначе
+  Handled/Failed **своего** сообщения (контекст `message_failed`, `message_will_retry`), иначе
   `WorkerRunningEvent` (priority 0, до `kernel.reset`) или следующий Received
-  (`acknowledged: false`).
+  (`MessageEventListener::NOT_ACKNOWLEDGED`). Ключи контекста с префиксом: `LoggerProcessor`
+  делает `array_merge` с контекстом span, общие ключи затёрли бы прикладные.
 - `LoggerProcessor` — `#[WithMonologChannel('profiling')]` (monolog-bundle >= 3.10, в
   `conflict`), `info`, сообщение `родитель > ... > span`, контекст `duration` + span + `end()`.
 - `MetricProcessor` живёт в metrics-bundle (`Framework/Profiling/...`); должен брать

@@ -10,6 +10,7 @@ use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 #[CoversClass(AbstractSpan::class)]
 #[CoversClass(Span::class)]
@@ -59,6 +60,11 @@ final class SpanTest extends TestCase
 
         $span->removeEndHandler(0);
         self::assertSame([], $span->getEndHandlers());
+    }
+
+    public function testEndCannotBeOverridden(): void
+    {
+        self::assertTrue(new ReflectionMethod(AbstractSpan::class, 'end')->isFinal());
     }
 
     public function testOnlyRealSpansAreRecorded(): void

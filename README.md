@@ -78,7 +78,9 @@ a `#[Required]` setter and falls back to a no-op factory outside the container.
 
 - A span opened while another is open becomes its child; ending a parent first ends every
   child still open, innermost first, at the parent's end time (spans wrapped by a create
-  processor end when they are reached), with the context `{"implicit": true}`. `end()` fixes
+  processor end when they are reached), with the context
+  `ProfilingFactoryInterface::IMPLICIT_END` (`{"profiling_implicit_end": true}`), as do spans
+  closed by `endAll()` / `kernel.reset`. `end()` fixes
   the duration (monotonic clock); calling it again does nothing.
 - Spans rejected by the decision makers are `NullSpan`s: they keep nesting intact but are
   never passed to end processors.
@@ -96,8 +98,11 @@ By default `kernel.reset` runs after every consumed message and ends every open 
 `messenger:consume` entry in `commands` only measures the time until the first message.
 Profile workers with `messages` instead. A message span ends with the message's own
 handled/failed event; batch handlers acknowledge later, so their span ends when the worker
-moves on (`WorkerRunningEvent`, before `kernel.reset`), with `acknowledged: false`. Vetoed
-messages are not profiled.
+moves on (`WorkerRunningEvent`, before `kernel.reset`), with `message_acknowledged: false`.
+Failures add `message_failed` and `message_will_retry`. Vetoed messages are not profiled. This
+assumes Messenger's default synchronous execution; with an asynchronous execution strategy
+(Symfony 8.1+) handled events come after `WorkerRunningEvent`, so message spans would only
+measure the dispatch.
 
 ### Extension points (autoconfigured by interface)
 

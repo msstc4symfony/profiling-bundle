@@ -9,16 +9,19 @@ use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryOwnerTrait;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\NullSpan;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\FactoryOwner;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\CoversTrait;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 #[CoversClass(NullProfilingFactory::class)]
 #[CoversTrait(ProfilingFactoryOwnerTrait::class)]
 #[UsesClass(AbstractSpan::class)]
 #[UsesClass(NullSpan::class)]
+#[UsesClass(Span::class)]
 #[UsesClass(ProfilingFactory::class)]
 final class NullFactoryAndOwnerTest extends TestCase
 {
@@ -29,6 +32,17 @@ final class NullFactoryAndOwnerTest extends TestCase
         self::assertInstanceOf(NullProfilingFactory::class, $factory);
         self::assertFalse($factory->createSpan('x')->isRecorded());
         $factory->endAll();
+    }
+
+    public function testNullFactoryEndSpanNeverThrows(): void
+    {
+        $span = new Span('x')->addEndHandler(static function (): never {
+            throw new RuntimeException('handler bug');
+        });
+
+        new NullProfilingFactory()->endSpan($span);
+
+        self::assertTrue($span->isEnded());
     }
 
     public function testOwnerUsesTheInjectedFactory(): void

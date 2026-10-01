@@ -12,6 +12,7 @@ use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\ListBasedDec
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
+use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
@@ -239,13 +240,40 @@ final class ProfilingFactoryTest extends TestCase
 
     public function testImplicitlyEndedChildrenAreMarked(): void
     {
+        $wrapping = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                return $span->getMessage() === 'wrapped' ? new DecoratingSpan($span) : $span;
+            }
+        };
+        $factory = new ProfilingFactory([new SpanAssembler()], [$wrapping], [$this->recorder]);
+        $seen = [];
+        $remember = static function (SpanInterface $span, array $context) use (&$seen): void {
+            $seen[$span->getMessage()] = $context;
+        };
+        $parent = $factory->createSpan('parent');
+        $factory->createSpan('child')->addEndHandler($remember);
+        $factory->createSpan('wrapped')->addEndHandler($remember);
+
+        $parent->end(['own' => true]);
+
+        self::assertSame(['wrapped' => ProfilingFactoryInterface::IMPLICIT_END, 'child' => ProfilingFactoryInterface::IMPLICIT_END], $seen);
+        $this->recorder->ended = [];
+        $factory->createSpan('leftover');
+        $factory->endAll();
+        self::assertSame([['leftover', ProfilingFactoryInterface::IMPLICIT_END]], $this->recorder->ended);
+    }
+
+    public function testImplicitlyEndedChildIsProcessedWithTheMarker(): void
+    {
         $factory = $this->factory();
         $parent = $factory->createSpan('parent');
         $factory->createSpan('child');
 
         $parent->end(['own' => true]);
 
-        self::assertSame([['child', ProfilingFactory::IMPLICIT_END], ['parent', ['own' => true]]], $this->recorder->ended);
+        self::assertSame([['child', ProfilingFactoryInterface::IMPLICIT_END], ['parent', ['own' => true]]], $this->recorder->ended);
     }
 
     public function testAThrowingHandlerOnTheEndedSpanReachesItsCallerAfterProcessing(): void

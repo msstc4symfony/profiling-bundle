@@ -13,6 +13,7 @@ use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\ListBasedDec
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\AbstainingDecisionMaker;
+use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\LateDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\TestKernel;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -35,6 +36,7 @@ use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
+use Symfony\Component\Messenger\EventListener\ResetServicesListener;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
@@ -130,7 +132,11 @@ final class KernelProfilingTest extends TestCase
     public function testMessageSpansAreClosedBeforeKernelReset(): void
     {
         self::assertSame(-1024, $this->listenerPriority(WorkerMessageReceivedEvent::class, 'onReceived'));
-        self::assertGreaterThan(-1024, $this->listenerPriority(WorkerRunningEvent::class, 'onWorkerRunning'));
+        // messenger:consume subscribes ResetServicesListener at run time; compare with its declared priority.
+        $reset = ResetServicesListener::getSubscribedEvents()[WorkerRunningEvent::class];
+        self::assertIsArray($reset);
+        self::assertIsInt($reset[1] ?? null);
+        self::assertGreaterThan($reset[1], $this->listenerPriority(WorkerRunningEvent::class, 'onWorkerRunning'));
     }
 
     public function testApplicationDecisionMakersAreAskedBeforeTheListBasedOne(): void
@@ -146,14 +152,14 @@ final class KernelProfilingTest extends TestCase
             $classes[] = $maker::class;
         }
 
-        self::assertSame([AbstainingDecisionMaker::class, ListBasedDecisionMaker::class], $classes);
+        self::assertSame([AbstainingDecisionMaker::class, ListBasedDecisionMaker::class, LateDecisionMaker::class], $classes);
     }
 
     public function testConfigurationReachesTheParameters(): void
     {
         $container = $this->kernel->getContainer();
 
-        self::assertSame(['ping'], $container->getParameter('msstc4symfony_profiling.routes.whitelist'));
+        self::assertSame(['ping', '\\kept'], $container->getParameter('msstc4symfony_profiling.routes.whitelist'));
         self::assertSame(['test:ping'], $container->getParameter('msstc4symfony_profiling.commands.whitelist'));
         self::assertSame(['App\\Message\\Import'], $container->getParameter('msstc4symfony_profiling.messages.whitelist'));
         self::assertNull($container->getParameter('msstc4symfony_profiling.spans.whitelist'));

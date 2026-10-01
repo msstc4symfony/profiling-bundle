@@ -21,6 +21,9 @@ use Symfony\Contracts\Service\ResetInterface;
  * The span is closed by its own message's handled/failed event. Batch handlers acknowledge
  * later, so a span still open when the worker moves on (WorkerRunningEvent, before
  * kernel.reset at -1024; or the next message) is closed then, marked as not acknowledged.
+ * Assumes Messenger's default synchronous execution: with an asynchronous execution strategy
+ * (Symfony 8.1+) handled events arrive after WorkerRunningEvent, so every span would be
+ * closed as not acknowledged and measure the dispatch only.
  */
 #[AsEventListener(event: WorkerMessageReceivedEvent::class, method: 'onReceived', priority: -1024)]
 #[AsEventListener(event: WorkerMessageHandledEvent::class, method: 'onHandled')]
@@ -28,6 +31,8 @@ use Symfony\Contracts\Service\ResetInterface;
 #[AsEventListener(event: WorkerRunningEvent::class, method: 'onWorkerRunning')]
 final class MessageEventListener implements ResetInterface
 {
+    public const array NOT_ACKNOWLEDGED = ['message_acknowledged' => false];
+
     private ?object $message = null;
 
     private ?SpanInterface $span = null;
@@ -44,7 +49,7 @@ final class MessageEventListener implements ResetInterface
 
     public function onReceived(WorkerMessageReceivedEvent $event): void
     {
-        $this->close(['acknowledged' => false]);
+        $this->close(self::NOT_ACKNOWLEDGED);
 
         $message = $event->getEnvelope()->getMessage();
         if (!$event->shouldHandle() || !array_any($this->messagesWhitelist, static fn (string $class): bool => $message instanceof $class)) {
@@ -65,13 +70,13 @@ final class MessageEventListener implements ResetInterface
     public function onFailed(WorkerMessageFailedEvent $event): void
     {
         if ($event->getEnvelope()->getMessage() === $this->message) {
-            $this->close(['failed' => true, 'will_retry' => $event->willRetry()]);
+            $this->close(['message_failed' => true, 'message_will_retry' => $event->willRetry()]);
         }
     }
 
     public function onWorkerRunning(): void
     {
-        $this->close(['acknowledged' => false]);
+        $this->close(self::NOT_ACKNOWLEDGED);
     }
 
     #[Override]

@@ -14,6 +14,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
 use Symfony\Component\Console\Output\OutputInterface;
+use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Kernel;
@@ -68,7 +69,7 @@ final class TestKernel extends Kernel
             'handlers' => ['profiling' => ['type' => 'test', 'channels' => ['profiling']]],
         ]);
         $container->extension('msstc4symfony_profiling', [
-            'routes' => ['ping'],
+            'routes' => ['ping', '\\kept'],
             'commands' => ['test:ping'],
             'messages' => ['\\App\\Message\\Import'],
             'spans' => ['blacklist' => ['sql ']],
@@ -79,6 +80,7 @@ final class TestKernel extends Kernel
         $services->set(OrphanSpanOpener::class)->public();
         $services->set(PingCommand::class);
         $services->set(AbstainingDecisionMaker::class);
+        $services->set(LateDecisionMaker::class);
         // Unused services are removed on compile; the tests fetch these.
         $services->alias('test.profiling_handler', 'monolog.handler.profiling')->public();
         $services->alias('test.services_resetter', 'services_resetter')->public();
@@ -102,6 +104,19 @@ final class PingCommand extends Command
 }
 
 final class AbstainingDecisionMaker implements AllowSpanDecisionMakerInterface
+{
+    #[Override]
+    public function isAllowed(string $message): ?bool
+    {
+        return null;
+    }
+}
+
+/**
+ * Registered before the bundle's maker; only its priority can put it after it.
+ */
+#[AsTaggedItem(priority: -2048)]
+final class LateDecisionMaker implements AllowSpanDecisionMakerInterface
 {
     #[Override]
     public function isAllowed(string $message): ?bool

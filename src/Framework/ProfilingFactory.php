@@ -26,9 +26,6 @@ use Throwable;
  */
 final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterface
 {
-    /** End context of children closed by their parent rather than by their own end(). */
-    public const array IMPLICIT_END = ['implicit' => true];
-
     /** @var list<SpanInterface> */
     private array $activeSpans = [];
 
@@ -99,7 +96,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
     {
         while ($this->activeSpans !== []) {
             $top = $this->activeSpans[array_key_last($this->activeSpans)];
-            $this->endSpan($top);
+            $this->endSpan($top, self::IMPLICIT_END);
             // A span whose factory handler was removed never leaves the stack by itself.
             $this->remove($top);
         }

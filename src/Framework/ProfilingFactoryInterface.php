@@ -9,6 +9,12 @@ use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 interface ProfilingFactoryInterface
 {
     /**
+     * End context of spans closed by the factory (a parent ending, endAll(), kernel.reset)
+     * rather than by their own end().
+     */
+    public const array IMPLICIT_END = ['profiling_implicit_end' => true];
+
+    /**
      * @param array<string, mixed> $context
      */
     public function createSpan(string $message, array $context = []): SpanInterface;

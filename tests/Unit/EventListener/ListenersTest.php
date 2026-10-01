@@ -8,10 +8,13 @@ use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\MessageEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
+use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
+use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
@@ -46,6 +49,24 @@ final class ListenersTest extends TestCase
     {
         $this->recorder = new RecordingEndProcessor();
         $this->factory = new ProfilingFactory([new SpanAssembler()], [], [$this->recorder]);
+    }
+
+    /**
+     * Every span gets an end handler that throws, as a buggy create processor would add.
+     */
+    private function throwingFactory(): ProfilingFactory
+    {
+        $throwing = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                return $span->addEndHandler(static function (): never {
+                    throw new RuntimeException('handler bug');
+                });
+            }
+        };
+
+        return new ProfilingFactory([new SpanAssembler()], [$throwing], [$this->recorder]);
     }
 
     public function testProfilesWhitelistedRoutesAndClosesLeftoversOnTerminate(): void
@@ -128,7 +149,7 @@ final class ListenersTest extends TestCase
 
         self::assertSame([
             ['message ' . ProfiledMessage::class, []],
-            ['message ' . ProfiledMessage::class, ['failed' => true, 'will_retry' => true]],
+            ['message ' . ProfiledMessage::class, ['message_failed' => true, 'message_will_retry' => true]],
         ], $this->recorder->ended);
     }
 
@@ -144,11 +165,31 @@ final class ListenersTest extends TestCase
         $listener->onHandled(new WorkerMessageHandledEvent($second, 'async'));
 
         self::assertSame([
-            ['message ' . ProfiledMessage::class, ['acknowledged' => false]],
+            ['message ' . ProfiledMessage::class, MessageEventListener::NOT_ACKNOWLEDGED],
             ['message ' . ProfiledMessage::class, []],
         ], $this->recorder->ended);
         $this->factory->endAll();
         self::assertCount(2, $this->recorder->ended);
+    }
+
+    public function testThrowingEndHandlersNeverEscapeTheListeners(): void
+    {
+        $factory = $this->throwingFactory();
+        $request = new RequestEventListener($factory, ['orders']);
+        $console = new ConsoleEventListener($factory, ['app:import']);
+        $message = new MessageEventListener($factory, [ProfiledMessage::class]);
+
+        $request->onRequest($this->requestEvent('orders'));
+        $request->onTerminate();
+
+        $console->onCommand(new ConsoleCommandEvent(new Command('app:import'), new ArrayInput([]), new NullOutput()));
+        $console->onTerminate();
+
+        $envelope = new Envelope(new ProfiledMessage());
+        $message->onReceived(new WorkerMessageReceivedEvent($envelope, 'async'));
+        $message->onHandled(new WorkerMessageHandledEvent($envelope, 'async'));
+
+        self::assertSame(['request orders', 'cli command app:import', 'message ' . ProfiledMessage::class], $this->recorder->messages());
     }
 
     public function testHandledEventOfAnotherMessageDoesNotCloseTheSpan(): void
@@ -174,7 +215,7 @@ final class ListenersTest extends TestCase
         $listener->onWorkerRunning();
         $listener->onWorkerRunning();
 
-        self::assertSame([['message ' . ProfiledMessage::class, ['acknowledged' => false]]], $this->recorder->ended);
+        self::assertSame([['message ' . ProfiledMessage::class, MessageEventListener::NOT_ACKNOWLEDGED]], $this->recorder->ended);
     }
 
     public function testVetoedMessagesAreNotProfiled(): void
