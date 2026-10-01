@@ -66,6 +66,11 @@ final class ProfilingBundle extends AbstractBundle
             ->info($info)
             ->scalarPrototype()
                 ->cannotBeEmpty()
+                // Class names: "\App\Foo" must match App\Foo::class.
+                ->beforeNormalization()
+                    ->ifString()
+                    ->then(static fn (string $value): string => ltrim($value, '\\'))
+                ->end()
                 ->validate()
                     ->ifTrue(static fn (mixed $value): bool => !is_string($value))
                     ->thenInvalid('Expected a string, got %s.')

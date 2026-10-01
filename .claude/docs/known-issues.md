@@ -22,8 +22,16 @@
 
 - Команды-воркеры в `commands` (`messenger:consume`): `kernel.reset` после первого
   сообщения закрывает span команды. Для воркеров — опция `messages` (описано в README).
-- Дочерние span закрываются уже после того, как зафиксирован `end()` родителя, поэтому
-  длительность ребёнка может быть чуть больше родительской (микросекунды).
+- Ревью 2 (2026-10-01 UTC): один span в `MessageEventListener` путал исходы батчей
+  (Received A, Received B, Failed A приписывалось B) — теперь span закрывается только событием
+  своего сообщения, незакрытый — на следующем Received с `acknowledged: false`; listener на
+  Received с priority -1024, чтобы veto (`shouldHandle(false)`) уже были выставлены.
+  Бросающий пользовательский handler ребёнка обрывал `onEnd` и терял span — теперь
+  `AbstractSpan::endAt()` вызывает все handlers и бросает первое исключение в конце, а
+  фабрика закрывает детей в try/catch и обрабатывает очередь в `finally`. Дети закрываются
+  временем родителя (`endAt`) — иначе медленный handler внука удлинял ребёнка сверх родителя.
+- Symfony 8.1 объявил устаревшим `defaultPriorityMethod`/`getDefaultPriority()` для tagged
+  iterators — приоритеты только через `#[AsTaggedItem]`.
 - `symfony/service-contracts` не объявлен в `require`, хотя используется (`ResetInterface`,
   `#[Required]`): верификатор стандарта требует для всех `symfony/*` `^6.4|^7.0|^8.0`, а
   contracts версионируются `^3`. Приходит через `symfony/dependency-injection`.

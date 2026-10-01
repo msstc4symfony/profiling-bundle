@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
 
 use Override;
+use Throwable;
 
 abstract class AbstractSpan implements SpanInterface
 {
@@ -107,14 +108,43 @@ abstract class AbstractSpan implements SpanInterface
     #[Override]
     public function end(array $context = []): void
     {
+        $this->endAt(hrtime(true), $context);
+    }
+
+    /**
+     * @internal the factory ends children at their parent's end time, so a child never
+     *           outlasts its parent
+     *
+     * @param array<string, mixed> $context
+     */
+    public function endAt(int $endedAt, array $context = []): void
+    {
         if ($this->endedAt !== null) {
             return;
         }
 
-        $this->endedAt = hrtime(true);
+        $this->endedAt = max($endedAt, $this->startedAt);
 
+        // Every handler runs, the factory's included, even when an application handler throws.
+        $failure = null;
         foreach ($this->endHandlers as $endHandler) {
-            $endHandler($this, $context);
+            try {
+                $endHandler($this, $context);
+            } catch (Throwable $exception) {
+                $failure ??= $exception;
+            }
         }
+
+        if ($failure instanceof Throwable) {
+            throw $failure;
+        }
+    }
+
+    /**
+     * @internal
+     */
+    public function getEndedAt(): ?int
+    {
+        return $this->endedAt;
     }
 }

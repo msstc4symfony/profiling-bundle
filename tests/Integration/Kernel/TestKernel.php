@@ -69,6 +69,8 @@ final class TestKernel extends Kernel
         $container->extension('msstc4symfony_profiling', [
             'routes' => ['ping'],
             'commands' => ['test:ping'],
+            'messages' => ['\\App\\Message\\Import'],
+            'spans' => ['blacklist' => ['sql ']],
         ]);
 
         $services = $container->services();

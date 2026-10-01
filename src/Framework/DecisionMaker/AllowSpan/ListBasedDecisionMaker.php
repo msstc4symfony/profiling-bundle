@@ -5,14 +5,18 @@ declare(strict_types=1);
 namespace Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan;
 
 use Override;
+use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
  * Prefix lists from configuration (only one of them can be set). Abstains when neither is
  * set and runs last, so application decision makers are asked first.
  */
+#[AsTaggedItem(priority: self::PRIORITY)]
 final readonly class ListBasedDecisionMaker implements AllowSpanDecisionMakerInterface
 {
+    public const int PRIORITY = -1024;
+
     /**
      * @param list<string>|null $spansWhitelist
      * @param list<string>|null $spansBlacklist
@@ -23,12 +27,6 @@ final readonly class ListBasedDecisionMaker implements AllowSpanDecisionMakerInt
         #[Autowire(param: 'msstc4symfony_profiling.spans.blacklist')]
         private ?array $spansBlacklist = null,
     ) {
-    }
-
-    #[Override]
-    public static function getDefaultPriority(): int
-    {
-        return -1024;
     }
 
     #[Override]

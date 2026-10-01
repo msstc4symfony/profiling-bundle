@@ -7,6 +7,7 @@ namespace Msstc4Symfony\ProfilingBundle\Framework;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssemblerInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use Override;
@@ -18,8 +19,10 @@ use Throwable;
 
 /**
  * Keeps the stack of open spans. Ending a span first ends every span opened inside it,
- * innermost first. The stack is settled before any end processor runs, and processors run
- * from a queue, so a processor that opens or ends spans cannot reorder or repeat the work.
+ * innermost first and at the parent's end time. The stack is settled before any end
+ * processor runs, and processors run from a queue, so a processor that opens or ends spans
+ * cannot reorder or repeat the work. Failures of assemblers, processors and implicitly run
+ * end handlers are logged, never thrown into the profiled code.
  */
 final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterface
 {
@@ -37,7 +40,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
      * @param iterable<EndSpanProcessorInterface> $endSpanProcessors
      */
     public function __construct(
-        #[AutowireIterator(tag: SpanAssemblerInterface::class, defaultPriorityMethod: 'getDefaultPriority')]
+        #[AutowireIterator(tag: SpanAssemblerInterface::class)]
         private readonly iterable $spanAssemblers = [],
         #[AutowireIterator(tag: CreateSpanProcessorInterface::class)]
         private readonly iterable $createSpanProcessors = [],
@@ -53,9 +56,20 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         $this->dropEndedTop();
         $parent = $this->activeSpans === [] ? null : $this->activeSpans[array_key_last($this->activeSpans)];
 
-        $span = $this->assemble($message, $context)->setParentSpan($parent);
+        try {
+            $span = $this->assemble($message, $context);
+        } catch (Throwable $exception) {
+            $this->report('Profiling could not assemble span "{span}".', $message, $exception);
+            $span = new NullSpan($message, $context);
+        }
+
+        $span->setParentSpan($parent);
         foreach ($this->createSpanProcessors as $processor) {
-            $span = $processor->process($span);
+            try {
+                $span = $processor->process($span);
+            } catch (Throwable $exception) {
+                $this->report('Profiling create processor ' . $processor::class . ' failed for span "{span}".', $message, $exception);
+            }
         }
 
         // Bound to the span that sits on the stack, which may wrap the assembled one.
@@ -128,17 +142,32 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
             return;
         }
 
-        $children = array_reverse(array_slice($this->activeSpans, $position + 1));
+        // Children ended earlier lost their factory handler; they are dropped, not processed.
+        $children = array_values(array_filter(
+            array_reverse(array_slice($this->activeSpans, $position + 1)),
+            static fn (SpanInterface $child): bool => !$child->isEnded(),
+        ));
         $this->activeSpans = array_slice($this->activeSpans, 0, $position);
 
         foreach ($children as $child) {
-            // Off the stack already, so its own factory handler does nothing.
-            $child->end();
             $this->endedSpans[] = [$child, []];
         }
 
         $this->endedSpans[] = [$span, $context];
-        $this->processEndedSpans();
+        $endedAt = $span instanceof AbstractSpan ? $span->getEndedAt() : null;
+
+        try {
+            foreach ($children as $child) {
+                try {
+                    // Off the stack already, so its own factory handler does nothing.
+                    $endedAt !== null && $child instanceof AbstractSpan ? $child->endAt($endedAt) : $child->end();
+                } catch (Throwable $exception) {
+                    $this->report('An end handler failed for span "{span}".', $child->getMessage(), $exception);
+                }
+            }
+        } finally {
+            $this->processEndedSpans();
+        }
     }
 
     private function processEndedSpans(): void
@@ -172,12 +201,17 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
             try {
                 $processor->process($span, $context);
             } catch (Throwable $exception) {
-                $this->logger->error('Profiling end processor {processor} failed for span "{span}".', [
-                    'processor' => $processor::class,
-                    'span' => $span->getMessage(),
-                    'exception' => $exception,
-                ]);
+                $this->report('Profiling end processor ' . $processor::class . ' failed for span "{span}".', $span->getMessage(), $exception);
             }
+        }
+    }
+
+    private function report(string $message, string $span, Throwable $exception): void
+    {
+        try {
+            $this->logger->error($message, ['span' => $span, 'exception' => $exception]);
+        } catch (Throwable) {
+            // A broken logger must not break the profiled code either.
         }
     }
 }

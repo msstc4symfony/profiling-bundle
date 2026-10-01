@@ -16,16 +16,22 @@ use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * One span per consumed message: a worker command span would end at the first kernel.reset.
+ *
+ * The span is closed by its own message's handled/failed event. Batch handlers acknowledge
+ * later and vetoed messages never get one, so a span still open when the next message
+ * arrives is closed then, marked as not acknowledged.
  */
-#[AsEventListener(event: WorkerMessageReceivedEvent::class, method: 'onReceived')]
+#[AsEventListener(event: WorkerMessageReceivedEvent::class, method: 'onReceived', priority: -1024)]
 #[AsEventListener(event: WorkerMessageHandledEvent::class, method: 'onHandled')]
 #[AsEventListener(event: WorkerMessageFailedEvent::class, method: 'onFailed')]
 final class MessageEventListener implements ResetInterface
 {
+    private ?object $message = null;
+
     private ?SpanInterface $span = null;
 
     /**
-     * @param list<class-string> $messagesWhitelist
+     * @param list<class-string> $messagesWhitelist classes, parents or interfaces of profiled messages
      */
     public function __construct(
         private readonly ProfilingFactoryInterface $profilingFactory,
@@ -36,29 +42,45 @@ final class MessageEventListener implements ResetInterface
 
     public function onReceived(WorkerMessageReceivedEvent $event): void
     {
-        $class = $event->getEnvelope()->getMessage()::class;
-        if (!in_array($class, $this->messagesWhitelist, true)) {
+        $this->close(['acknowledged' => false]);
+
+        $message = $event->getEnvelope()->getMessage();
+        if (!$event->shouldHandle() || !array_any($this->messagesWhitelist, static fn (string $class): bool => $message instanceof $class)) {
             return;
         }
 
-        $this->span = $this->profilingFactory->createSpan('message ' . $class, ['transport' => $event->getReceiverName()]);
+        $this->message = $message;
+        $this->span = $this->profilingFactory->createSpan('message ' . $message::class, ['transport' => $event->getReceiverName()]);
     }
 
-    public function onHandled(): void
+    public function onHandled(WorkerMessageHandledEvent $event): void
     {
-        $this->span?->end();
-        $this->span = null;
+        if ($event->getEnvelope()->getMessage() === $this->message) {
+            $this->close([]);
+        }
     }
 
     public function onFailed(WorkerMessageFailedEvent $event): void
     {
-        $this->span?->end(['failed' => true, 'will_retry' => $event->willRetry()]);
-        $this->span = null;
+        if ($event->getEnvelope()->getMessage() === $this->message) {
+            $this->close(['failed' => true, 'will_retry' => $event->willRetry()]);
+        }
     }
 
     #[Override]
     public function reset(): void
     {
+        $this->message = null;
         $this->span = null;
+    }
+
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function close(array $context): void
+    {
+        $span = $this->span;
+        $this->reset();
+        $span?->end($context);
     }
 }

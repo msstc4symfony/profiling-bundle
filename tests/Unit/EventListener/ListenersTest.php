@@ -26,6 +26,7 @@ use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
 use Symfony\Component\Messenger\Envelope;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
+use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 
 #[CoversClass(RequestEventListener::class)]
@@ -111,29 +112,65 @@ final class ListenersTest extends TestCase
 
     public function testProfilesWhitelistedMessagesWhileTheWorkerHandlesThem(): void
     {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
+        $listener = new MessageEventListener($this->factory, [ProfiledMessageInterface::class]);
         $profiled = new Envelope(new ProfiledMessage());
 
         $listener->onReceived(new WorkerMessageReceivedEvent(new Envelope(new stdClass()), 'async'));
-        $listener->onHandled();
+        $listener->onHandled(new WorkerMessageHandledEvent(new Envelope(new stdClass()), 'async'));
         $listener->onReceived(new WorkerMessageReceivedEvent($profiled, 'async'));
-        $listener->onHandled();
+        $listener->onHandled(new WorkerMessageHandledEvent($profiled, 'async'));
         $listener->onReceived(new WorkerMessageReceivedEvent($profiled, 'async'));
-        $listener->onFailed(new WorkerMessageFailedEvent($profiled, 'async', new RuntimeException('boom')));
+
+        $retried = new WorkerMessageFailedEvent($profiled, 'async', new RuntimeException('boom'));
+        $retried->setForRetry();
+
+        $listener->onFailed($retried);
 
         self::assertSame([
             ['message ' . ProfiledMessage::class, []],
-            ['message ' . ProfiledMessage::class, ['failed' => true, 'will_retry' => false]],
+            ['message ' . ProfiledMessage::class, ['failed' => true, 'will_retry' => true]],
         ], $this->recorder->ended);
+    }
+
+    public function testBatchedMessagesDoNotTakeEachOthersOutcome(): void
+    {
+        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
+        $first = new Envelope(new ProfiledMessage());
+        $second = new Envelope(new ProfiledMessage());
+
+        $listener->onReceived(new WorkerMessageReceivedEvent($first, 'async'));
+        $listener->onReceived(new WorkerMessageReceivedEvent($second, 'async'));
+        $listener->onFailed(new WorkerMessageFailedEvent($first, 'async', new RuntimeException('boom')));
+        $listener->onHandled(new WorkerMessageHandledEvent($second, 'async'));
+
+        self::assertSame([
+            ['message ' . ProfiledMessage::class, ['acknowledged' => false]],
+            ['message ' . ProfiledMessage::class, []],
+        ], $this->recorder->ended);
+        $this->factory->endAll();
+        self::assertCount(2, $this->recorder->ended);
+    }
+
+    public function testVetoedMessagesAreNotProfiled(): void
+    {
+        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
+        $event = new WorkerMessageReceivedEvent(new Envelope(new ProfiledMessage()), 'async');
+        $event->shouldHandle(false);
+
+        $listener->onReceived($event);
+        $this->factory->endAll();
+
+        self::assertSame([], $this->recorder->ended);
     }
 
     public function testMessageListenerResetForgetsTheSpan(): void
     {
         $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
-        $listener->onReceived(new WorkerMessageReceivedEvent(new Envelope(new ProfiledMessage()), 'async'));
+        $envelope = new Envelope(new ProfiledMessage());
+        $listener->onReceived(new WorkerMessageReceivedEvent($envelope, 'async'));
 
         $listener->reset();
-        $listener->onHandled();
+        $listener->onHandled(new WorkerMessageHandledEvent($envelope, 'async'));
 
         self::assertSame([], $this->recorder->ended);
     }
@@ -147,6 +184,10 @@ final class ListenersTest extends TestCase
     }
 }
 
-final class ProfiledMessage
+interface ProfiledMessageInterface
+{
+}
+
+final class ProfiledMessage implements ProfiledMessageInterface
 {
 }

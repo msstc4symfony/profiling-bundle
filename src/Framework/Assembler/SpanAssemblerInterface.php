@@ -14,6 +14,4 @@ interface SpanAssemblerInterface
      * @param array<string, mixed> $context
      */
     public function assemble(string $message, array $context): ?SpanInterface;
-
-    public static function getDefaultPriority(): int;
 }

@@ -44,8 +44,8 @@ msstc4symfony_profiling:
     routes: ['api_orders_list']
     # Console commands with these names get a "cli command <name>" span.
     commands: ['app:import']
-    # Messages of these classes get a "message <class>" span while a worker handles them
-    # (needs symfony/messenger).
+    # Messages of these classes (or their parents/interfaces) get a "message <class>" span
+    # while a worker handles them (needs symfony/messenger).
     messages: ['App\Message\ImportOrders']
     # Span message prefixes; set at most one list.
     spans:
@@ -77,28 +77,32 @@ Or `use ProfilingFactoryOwnerTrait;` in an autowired service: the factory is inj
 a `#[Required]` setter and falls back to a no-op factory outside the container.
 
 - A span opened while another is open becomes its child; ending a parent first ends every
-  child still open, innermost first. `end()` fixes the duration (monotonic clock); calling it
-  again does nothing.
+  child still open, innermost first, at the parent's end time. `end()` fixes the duration
+  (monotonic clock); calling it again does nothing.
 - Spans rejected by the decision makers are `NullSpan`s: they keep nesting intact but are
   never passed to end processors.
 - Open spans are ended on `kernel.terminate` / `console.terminate` and on `kernel.reset`.
-- An end processor that throws never breaks the profiled code: the exception is logged on the
-  default `logger` and the remaining processors still run.
+- A failing assembler, decision maker, create or end processor never breaks the profiled
+  code: the exception is logged on the default `logger` and profiling carries on. An
+  exception from your own end handler reaches the code that called `end()` on that span
+  (after the span was processed); handlers of children ended implicitly are only logged.
 
 ### Workers
 
-`kernel.reset` runs after every consumed message and ends every open span, so a
+By default `kernel.reset` runs after every consumed message and ends every open span, so a
 `messenger:consume` entry in `commands` only measures the time until the first message.
-Profile workers with `messages` instead.
+Profile workers with `messages` instead. A message span ends with the message's own
+handled/failed event; batch handlers acknowledge later, so their span ends when the next
+message arrives, with `acknowledged: false`. Vetoed messages are not profiled.
 
 ### Extension points (autoconfigured by interface)
 
 | Interface | Role |
 |---|---|
-| `AllowSpanDecisionMakerInterface` | votes whether a span is recorded (`true`/`false`/`null` = abstain); asked in `getDefaultPriority()` order, the first vote wins. The built-in list maker runs last (-1024) and abstains when no list is set |
+| `AllowSpanDecisionMakerInterface` | votes whether a span is recorded (`true`/`false`/`null` = abstain); asked by priority (`#[AsTaggedItem(priority: ...)]`), the first vote wins. The built-in list maker runs last (-1024) and abstains when no list is set |
 | `SpanAssemblerInterface` | builds the span object for a message |
 | `CreateSpanProcessorInterface` | can enrich or wrap a span when it is created. A wrapper must delegate `end()`, `isEnded()` and `addEndHandler()` to the wrapped span; the factory binds its end handler to the returned span |
-| `EndSpanProcessorInterface` | receives every recorded span once, after it ended (`LoggerProcessor` is built in; `msstc4symfony/metrics-bundle` adds Prometheus durations). Order with `getDefaultPriority()` or the tag `priority` |
+| `EndSpanProcessorInterface` | receives every recorded span once, after it ended (`LoggerProcessor` is built in; `msstc4symfony/metrics-bundle` adds Prometheus durations). Order with `#[AsTaggedItem(priority: ...)]` |
 
 Do not remove the factory's own end handler (`getEndHandlers()` lists it): such a span is
 never processed and is dropped from the stack.

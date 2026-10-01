@@ -14,6 +14,8 @@ use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
+use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 
 #[CoversClass(SpanAssembler::class)]
 #[CoversClass(ListBasedDecisionMaker::class)]
@@ -42,7 +44,9 @@ final class AssemblerAndDecisionMakerTest extends TestCase
     public function testWithoutListsItAbstainsAfterApplicationMakers(): void
     {
         self::assertNull(new ListBasedDecisionMaker()->isAllowed('anything'));
-        self::assertLessThan(0, ListBasedDecisionMaker::getDefaultPriority());
+        $tagged = new ReflectionClass(ListBasedDecisionMaker::class)->getAttributes(AsTaggedItem::class)[0] ?? null;
+        self::assertNotNull($tagged);
+        self::assertLessThan(0, $tagged->newInstance()->priority);
     }
 
     public function testFirstDecidingMakerWins(): void
@@ -52,12 +56,6 @@ final class AssemblerAndDecisionMakerTest extends TestCase
             public function isAllowed(string $message): ?bool
             {
                 return null;
-            }
-
-            #[Override]
-            public static function getDefaultPriority(): int
-            {
-                return 0;
             }
         };
         $assembler = new SpanAssembler([$abstain, new ListBasedDecisionMaker(spansBlacklist: ['x'])]);

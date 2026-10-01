@@ -7,6 +7,7 @@ namespace Msstc4Symfony\ProfilingBundle\Test\Unit\Framework;
 use Monolog\Handler\TestHandler;
 use Monolog\Logger;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
+use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssemblerInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\ListBasedDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
@@ -140,7 +141,8 @@ final class ProfilingFactoryTest extends TestCase
 
     public function testAProcessorEndingAnAncestorKeepsOrderAndProcessesEachSpanOnce(): void
     {
-        $factory = $this->factory();
+        $second = new RecordingEndProcessor();
+        $factory = new ProfilingFactory([new SpanAssembler()], [], [$this->recorder, $second]);
         $a = $factory->createSpan('a');
         $b = $factory->createSpan('b');
         $factory->createSpan('c');
@@ -153,6 +155,96 @@ final class ProfilingFactoryTest extends TestCase
         $b->end();
 
         self::assertSame(['c', 'b', 'a'], $this->recorder->messages());
+        self::assertSame(['c', 'b', 'a'], $second->messages());
+    }
+
+    public function testAThrowingHandlerOnAnImplicitlyEndedChildIsLoggedAndEverythingIsProcessed(): void
+    {
+        $log = new TestHandler();
+        $factory = new ProfilingFactory([new SpanAssembler()], [], [$this->recorder], new Logger('app', [$log]));
+        $a = $factory->createSpan('a');
+        $factory->createSpan('b');
+        $factory->createSpan('c')->addEndHandler(static function (): never {
+            throw new RuntimeException('handler bug');
+        });
+
+        $a->end();
+        $factory->endAll();
+
+        self::assertSame(['c', 'b', 'a'], $this->recorder->messages());
+        self::assertCount(1, $log->getRecords());
+        self::assertNull($factory->createSpan('next')->getParentSpan());
+    }
+
+    public function testAThrowingHandlerOnTheEndedSpanReachesItsCallerAfterProcessing(): void
+    {
+        $span = $this->factory()->createSpan('own');
+        $span->addEndHandler(static function (): never {
+            throw new RuntimeException('handler bug');
+        });
+
+        try {
+            $span->end();
+            self::fail('The application handler exception must reach the caller.');
+        } catch (RuntimeException $exception) {
+            self::assertSame('handler bug', $exception->getMessage());
+        }
+
+        self::assertSame(['own'], $this->recorder->messages());
+    }
+
+    public function testChildrenEndAtTheirParentsEndTime(): void
+    {
+        $factory = $this->factory();
+        $parent = $factory->createSpan('parent');
+        $child = $factory->createSpan('child');
+        $factory->createSpan('grandchild')->addEndHandler(static function (): void {
+            usleep(20_000);
+        });
+
+        $parent->end();
+
+        self::assertLessThanOrEqual($parent->getDuration(), $child->getDuration());
+    }
+
+    public function testADetachedChildEndedEarlierIsNotProcessed(): void
+    {
+        $factory = $this->factory();
+        $a = $factory->createSpan('a');
+        $detached = $factory->createSpan('detached');
+        $factory->createSpan('c');
+        $detached->removeEndHandler(0);
+        $detached->end(['ctx' => 'lost']);
+
+        $a->end();
+
+        self::assertSame(['c', 'a'], $this->recorder->messages());
+    }
+
+    public function testFailuresWhileCreatingASpanAreLoggedAndASpanIsStillReturned(): void
+    {
+        $throwingAssembler = new class implements SpanAssemblerInterface {
+            #[Override]
+            public function assemble(string $message, array $context): ?SpanInterface
+            {
+                throw new RuntimeException('assembler bug');
+            }
+        };
+        $throwingProcessor = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                throw new RuntimeException('processor bug');
+            }
+        };
+        $log = new TestHandler();
+
+        $unassembled = new ProfilingFactory([$throwingAssembler], [], [], new Logger('app', [$log]))->createSpan('x');
+        $unprocessed = new ProfilingFactory([new SpanAssembler()], [$throwingProcessor], [], new Logger('app', [$log]))->createSpan('y');
+
+        self::assertInstanceOf(NullSpan::class, $unassembled);
+        self::assertInstanceOf(Span::class, $unprocessed);
+        self::assertCount(2, $log->getRecords());
     }
 
     public function testAProcessorOpeningASpanDuringEndAllDoesNotLoseIt(): void

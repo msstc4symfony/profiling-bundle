@@ -17,15 +17,9 @@ final readonly class SpanAssembler implements SpanAssemblerInterface
      * @param iterable<AllowSpanDecisionMakerInterface> $allowSpanDecisionMakers
      */
     public function __construct(
-        #[AutowireIterator(tag: AllowSpanDecisionMakerInterface::class, defaultPriorityMethod: 'getDefaultPriority')]
+        #[AutowireIterator(tag: AllowSpanDecisionMakerInterface::class)]
         private iterable $allowSpanDecisionMakers = [],
     ) {
-    }
-
-    #[Override]
-    public static function getDefaultPriority(): int
-    {
-        return 0;
     }
 
     #[Override]

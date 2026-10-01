@@ -6,6 +6,7 @@ namespace Msstc4Symfony\ProfilingBundle\Test\Integration;
 
 use Monolog\Handler\TestHandler;
 use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
+use Msstc4Symfony\ProfilingBundle\EventListener\MessageEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
@@ -26,6 +27,9 @@ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
 use Symfony\Component\Filesystem\Filesystem;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
+use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
+use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
@@ -103,6 +107,30 @@ final class KernelProfilingTest extends TestCase
         }
 
         self::assertSame(['onTerminate', 'onTerminateEnd'], $methods);
+    }
+
+    public function testMessageListenerIsRegisteredWithMessenger(): void
+    {
+        $dispatcher = $this->testContainer()->get('event_dispatcher');
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+
+        foreach ([WorkerMessageReceivedEvent::class, WorkerMessageHandledEvent::class, WorkerMessageFailedEvent::class] as $event) {
+            self::assertNotSame([], array_filter(
+                $dispatcher->getListeners($event),
+                static fn (mixed $listener): bool => is_array($listener) && $listener[0] instanceof MessageEventListener,
+            ), $event);
+        }
+    }
+
+    public function testConfigurationReachesTheParameters(): void
+    {
+        $container = $this->kernel->getContainer();
+
+        self::assertSame(['ping'], $container->getParameter('msstc4symfony_profiling.routes.whitelist'));
+        self::assertSame(['test:ping'], $container->getParameter('msstc4symfony_profiling.commands.whitelist'));
+        self::assertSame(['App\\Message\\Import'], $container->getParameter('msstc4symfony_profiling.messages.whitelist'));
+        self::assertNull($container->getParameter('msstc4symfony_profiling.spans.whitelist'));
+        self::assertSame(['sql '], $container->getParameter('msstc4symfony_profiling.spans.blacklist'));
     }
 
     public function testKernelResetEndsOpenSpans(): void

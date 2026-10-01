@@ -12,6 +12,7 @@ return static function (ContainerConfigurator $container): void {
     $services->defaults()->autowire()->autoconfigure();
 
     $exclude = ['../../ProfilingBundle.php', '../../Resources/'];
+    // Without Messenger its events never fire; keep the listener out of the container.
     if (!class_exists(Worker::class)) {
         $exclude[] = '../../EventListener/MessageEventListener.php';
     }

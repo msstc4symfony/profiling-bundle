@@ -6,6 +6,8 @@
   Decision makers сравнивают по префиксу — новые встроенные span называть `<вид> <деталь>`.
   Сообщение = метка Prometheus в metrics → никаких id в сообщении.
 - Новый extension point — интерфейс с `#[AutoconfigureTag]` + `#[AutowireIterator]` в фабрике;
-  порядок — `getDefaultPriority()` (Symfony ищет его по умолчанию) или `priority` тега.
+  порядок — `#[AsTaggedItem(priority: ...)]` (не `getDefaultPriority()`: deprecated в 8.1).
 - Всё, что держит состояние между запросами, — `ResetInterface`.
-- Ничто из профилирования не бросает в прикладной код (процессоры в try/catch).
+- Ничто из профилирования не бросает в прикладной код: assemblers, decision makers, процессоры
+  и неявно вызванные handlers — в try/catch с логом. Исключение — handler, который приложение
+  само повесило на span, который само закрывает.

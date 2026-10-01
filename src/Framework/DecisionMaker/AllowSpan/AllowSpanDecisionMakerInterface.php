@@ -10,6 +10,4 @@ use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 interface AllowSpanDecisionMakerInterface
 {
     public function isAllowed(string $message): ?bool;
-
-    public static function getDefaultPriority(): int;
 }
