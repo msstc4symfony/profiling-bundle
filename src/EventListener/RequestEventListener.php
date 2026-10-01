@@ -47,7 +47,9 @@ final class RequestEventListener implements ResetInterface
 
     public function onTerminate(): void
     {
-        $this->span?->end();
+        if ($this->span instanceof SpanInterface) {
+            $this->profilingFactory->endSpan($this->span);
+        }
         $this->span = null;
     }
 

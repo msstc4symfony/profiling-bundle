@@ -21,7 +21,7 @@ final class ProfilingBundle extends AbstractBundle
         $root = $definition->rootNode()->children();
         $this->stringList($root, 'routes', 'Main-request route names that get a "request <route>" span.');
         $this->stringList($root, 'commands', 'Console command names that get a "cli command <name>" span.');
-        $this->stringList($root, 'messages', 'Message classes that get a "message <class>" span while a worker handles them.');
+        $this->stringList($root, 'messages', 'Message classes (or their parents/interfaces) that get a "message <class>" span while a worker handles them.', classNames: true);
 
         $spans = $root->arrayNode('spans')
             ->addDefaultsIfNotSet()
@@ -60,17 +60,22 @@ final class ProfilingBundle extends AbstractBundle
         ;
     }
 
-    private function stringList(NodeBuilder $parent, string $name, string $info): void
+    private function stringList(NodeBuilder $parent, string $name, string $info, bool $classNames = false): void
     {
-        $parent->arrayNode($name)
+        $prototype = $parent->arrayNode($name)
             ->info($info)
             ->scalarPrototype()
                 ->cannotBeEmpty()
-                // Class names: "\App\Foo" must match App\Foo::class.
-                ->beforeNormalization()
-                    ->ifString()
-                    ->then(static fn (string $value): string => ltrim($value, '\\'))
-                ->end()
+        ;
+        if ($classNames) {
+            // "\App\Foo" must match App\Foo::class.
+            $prototype->beforeNormalization()
+                ->ifString()
+                ->then(static fn (string $value): string => ltrim($value, '\\'))
+            ;
+        }
+
+        $prototype
                 ->validate()
                     ->ifTrue(static fn (mixed $value): bool => !is_string($value))
                     ->thenInvalid('Expected a string, got %s.')

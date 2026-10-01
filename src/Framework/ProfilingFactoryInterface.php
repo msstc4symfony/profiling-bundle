@@ -13,5 +13,12 @@ interface ProfilingFactoryInterface
      */
     public function createSpan(string $message, array $context = []): SpanInterface;
 
+    /**
+     * Ends a span on behalf of framework code: end handler failures are logged, not thrown.
+     *
+     * @param array<string, mixed> $context
+     */
+    public function endSpan(SpanInterface $span, array $context = []): void;
+
     public function endAll(): void;
 }

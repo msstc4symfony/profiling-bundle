@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel;
 
+use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\AllowSpanDecisionMakerInterface;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
 use Override;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
@@ -77,6 +78,7 @@ final class TestKernel extends Kernel
         $services->defaults()->autowire()->autoconfigure();
         $services->set(OrphanSpanOpener::class)->public();
         $services->set(PingCommand::class);
+        $services->set(AbstainingDecisionMaker::class);
         // Unused services are removed on compile; the tests fetch these.
         $services->alias('test.profiling_handler', 'monolog.handler.profiling')->public();
         $services->alias('test.services_resetter', 'services_resetter')->public();
@@ -96,5 +98,14 @@ final class PingCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         return Command::SUCCESS;
+    }
+}
+
+final class AbstainingDecisionMaker implements AllowSpanDecisionMakerInterface
+{
+    #[Override]
+    public function isAllowed(string $message): ?bool
+    {
+        return null;
     }
 }

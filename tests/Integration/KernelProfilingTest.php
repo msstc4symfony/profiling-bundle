@@ -8,12 +8,16 @@ use Monolog\Handler\TestHandler;
 use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\MessageEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
+use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
+use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\ListBasedDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
+use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\AbstainingDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\TestKernel;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
+use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
@@ -30,6 +34,7 @@ use Symfony\Component\HttpKernel\KernelEvents;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
+use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
@@ -122,6 +127,28 @@ final class KernelProfilingTest extends TestCase
         }
     }
 
+    public function testMessageSpansAreClosedBeforeKernelReset(): void
+    {
+        self::assertSame(-1024, $this->listenerPriority(WorkerMessageReceivedEvent::class, 'onReceived'));
+        self::assertGreaterThan(-1024, $this->listenerPriority(WorkerRunningEvent::class, 'onWorkerRunning'));
+    }
+
+    public function testApplicationDecisionMakersAreAskedBeforeTheListBasedOne(): void
+    {
+        $assembler = $this->testContainer()->get(SpanAssembler::class);
+        self::assertInstanceOf(SpanAssembler::class, $assembler);
+        $makers = new ReflectionProperty($assembler, 'allowSpanDecisionMakers')->getValue($assembler);
+        self::assertIsIterable($makers);
+
+        $classes = [];
+        foreach ($makers as $maker) {
+            self::assertIsObject($maker);
+            $classes[] = $maker::class;
+        }
+
+        self::assertSame([AbstainingDecisionMaker::class, ListBasedDecisionMaker::class], $classes);
+    }
+
     public function testConfigurationReachesTheParameters(): void
     {
         $container = $this->kernel->getContainer();
@@ -176,6 +203,20 @@ final class KernelProfilingTest extends TestCase
         $configuration = $extension->getConfiguration([], new ContainerBuilder());
         self::assertNotNull($configuration);
         new Processor()->processConfiguration($configuration, [$config]);
+    }
+
+    private function listenerPriority(string $event, string $method): ?int
+    {
+        $dispatcher = $this->testContainer()->get('event_dispatcher');
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+
+        foreach ($dispatcher->getListeners($event) as $listener) {
+            if (is_array($listener) && $listener[0] instanceof MessageEventListener && $listener[1] === $method) {
+                return $dispatcher->getListenerPriority($event, $listener);
+            }
+        }
+
+        self::fail(sprintf('No %s::%s listener on %s.', MessageEventListener::class, $method, $event));
     }
 
     private function handle(string $path): void

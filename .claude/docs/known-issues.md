@@ -30,6 +30,16 @@
   `AbstractSpan::endAt()` вызывает все handlers и бросает первое исключение в конце, а
   фабрика закрывает детей в try/catch и обрабатывает очередь в `finally`. Дети закрываются
   временем родителя (`endAt`) — иначе медленный handler внука удлинял ребёнка сверх родителя.
+- Ревью 3 (2026-10-01 UTC): `endAll()` и listener'ы звали `end()` напрямую — исключение
+  handler'а (например, повешенного create-процессором) уходило в `services_resetter` и роняло
+  worker, а стек оставался полуоткрытым. Теперь всё «фреймворковое» закрытие идёт через
+  `ProfilingFactoryInterface::endSpan()` (лог вместо исключения). Span батча закрывается на
+  `WorkerRunningEvent` (priority 0, раньше `kernel.reset` на -1024): иначе reset сначала
+  обнулял listener, и `acknowledged: false` не доходил. `AbstractSpan::end()` final — фабрика
+  закрывает детей через `endAt()`, override `end()` пропускался бы.
+- Тест приоритета listener'а: callable брать из `getListeners()`, а не из
+  `test.service_container` — для приватного listener'а это может быть другой экземпляр, и
+  `getListenerPriority()` вернёт `null` (тест флакал).
 - Symfony 8.1 объявил устаревшим `defaultPriorityMethod`/`getDefaultPriority()` для tagged
   iterators — приоритеты только через `#[AsTaggedItem]`.
 - `symfony/service-contracts` не объявлен в `require`, хотя используется (`ResetInterface`,

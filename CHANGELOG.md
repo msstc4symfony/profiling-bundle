@@ -12,8 +12,10 @@ First release as `msstc4symfony/profiling-bundle` (`Msstc4Symfony\ProfilingBundl
 - `endAll()` and `kernel.reset` close every open span; listeners drop their span on reset.
 - `end()` is idempotent and fixes the duration (`getDuration()`, monotonic clock); each span
   reaches the end processors once, in order, even when a processor opens or ends spans.
-- Failures of assemblers, decision makers, processors and implicitly run end handlers are
-  logged instead of breaking the profiled code; children end at their parent's end time.
+- Failures of assemblers, decision makers, processors and end handlers run by the bundle
+  (implicit endings, `endAll()`, listeners via the new `ProfilingFactoryInterface::endSpan()`)
+  are logged instead of breaking the profiled code; children end at their parent's end time
+  with the context `{"implicit": true}`; `AbstractSpan::end()` is final.
 - Create processors may wrap spans; the factory tracks the returned span.
 - A factory without assemblers creates unrecorded spans instead of failing.
 - New `messages` option: one span per consumed Messenger message (class, parent or interface).

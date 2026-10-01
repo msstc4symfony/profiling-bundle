@@ -7,7 +7,8 @@ namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
 interface SpanInterface
 {
     /**
-     * Fixes the duration and runs the end handlers; later calls do nothing.
+     * Fixes the duration and runs the end handlers; later calls do nothing. Every handler runs
+     * even when one throws; the first exception is rethrown afterwards, later ones are dropped.
      *
      * @param array<string, mixed> $context merged into the span context for end processors
      */

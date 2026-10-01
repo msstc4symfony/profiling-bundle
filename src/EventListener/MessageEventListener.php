@@ -12,18 +12,20 @@ use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
 use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
+use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * One span per consumed message: a worker command span would end at the first kernel.reset.
  *
  * The span is closed by its own message's handled/failed event. Batch handlers acknowledge
- * later and vetoed messages never get one, so a span still open when the next message
- * arrives is closed then, marked as not acknowledged.
+ * later, so a span still open when the worker moves on (WorkerRunningEvent, before
+ * kernel.reset at -1024; or the next message) is closed then, marked as not acknowledged.
  */
 #[AsEventListener(event: WorkerMessageReceivedEvent::class, method: 'onReceived', priority: -1024)]
 #[AsEventListener(event: WorkerMessageHandledEvent::class, method: 'onHandled')]
 #[AsEventListener(event: WorkerMessageFailedEvent::class, method: 'onFailed')]
+#[AsEventListener(event: WorkerRunningEvent::class, method: 'onWorkerRunning')]
 final class MessageEventListener implements ResetInterface
 {
     private ?object $message = null;
@@ -67,6 +69,11 @@ final class MessageEventListener implements ResetInterface
         }
     }
 
+    public function onWorkerRunning(): void
+    {
+        $this->close(['acknowledged' => false]);
+    }
+
     #[Override]
     public function reset(): void
     {
@@ -81,6 +88,8 @@ final class MessageEventListener implements ResetInterface
     {
         $span = $this->span;
         $this->reset();
-        $span?->end($context);
+        if ($span instanceof SpanInterface) {
+            $this->profilingFactory->endSpan($span, $context);
+        }
     }
 }

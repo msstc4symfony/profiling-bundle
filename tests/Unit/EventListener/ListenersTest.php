@@ -151,6 +151,32 @@ final class ListenersTest extends TestCase
         self::assertCount(2, $this->recorder->ended);
     }
 
+    public function testHandledEventOfAnotherMessageDoesNotCloseTheSpan(): void
+    {
+        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
+        $first = new Envelope(new ProfiledMessage());
+        $second = new Envelope(new ProfiledMessage());
+        $listener->onReceived(new WorkerMessageReceivedEvent($first, 'async'));
+        $listener->onReceived(new WorkerMessageReceivedEvent($second, 'async'));
+
+        $listener->onHandled(new WorkerMessageHandledEvent($first, 'async'));
+        self::assertCount(1, $this->recorder->ended);
+
+        $listener->onHandled(new WorkerMessageHandledEvent($second, 'async'));
+        self::assertCount(2, $this->recorder->ended);
+    }
+
+    public function testDeferredBatchSpanEndsWhenTheWorkerMovesOn(): void
+    {
+        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
+        $listener->onReceived(new WorkerMessageReceivedEvent(new Envelope(new ProfiledMessage()), 'async'));
+
+        $listener->onWorkerRunning();
+        $listener->onWorkerRunning();
+
+        self::assertSame([['message ' . ProfiledMessage::class, ['acknowledged' => false]]], $this->recorder->ended);
+    }
+
     public function testVetoedMessagesAreNotProfiled(): void
     {
         $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);

@@ -26,6 +26,9 @@ use Throwable;
  */
 final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterface
 {
+    /** End context of children closed by their parent rather than by their own end(). */
+    public const array IMPLICIT_END = ['implicit' => true];
+
     /** @var list<SpanInterface> */
     private array $activeSpans = [];
 
@@ -82,11 +85,21 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
     }
 
     #[Override]
+    public function endSpan(SpanInterface $span, array $context = []): void
+    {
+        try {
+            $span->end($context);
+        } catch (Throwable $exception) {
+            $this->report('An end handler failed for span "{span}".', $span->getMessage(), $exception);
+        }
+    }
+
+    #[Override]
     public function endAll(): void
     {
         while ($this->activeSpans !== []) {
             $top = $this->activeSpans[array_key_last($this->activeSpans)];
-            $top->end();
+            $this->endSpan($top);
             // A span whose factory handler was removed never leaves the stack by itself.
             $this->remove($top);
         }
@@ -150,7 +163,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         $this->activeSpans = array_slice($this->activeSpans, 0, $position);
 
         foreach ($children as $child) {
-            $this->endedSpans[] = [$child, []];
+            $this->endedSpans[] = [$child, self::IMPLICIT_END];
         }
 
         $this->endedSpans[] = [$span, $context];
@@ -160,7 +173,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
             foreach ($children as $child) {
                 try {
                     // Off the stack already, so its own factory handler does nothing.
-                    $endedAt !== null && $child instanceof AbstractSpan ? $child->endAt($endedAt) : $child->end();
+                    $endedAt !== null && $child instanceof AbstractSpan ? $child->endAt($endedAt, self::IMPLICIT_END) : $child->end(self::IMPLICIT_END);
                 } catch (Throwable $exception) {
                     $this->report('An end handler failed for span "{span}".', $child->getMessage(), $exception);
                 }

@@ -77,23 +77,27 @@ Or `use ProfilingFactoryOwnerTrait;` in an autowired service: the factory is inj
 a `#[Required]` setter and falls back to a no-op factory outside the container.
 
 - A span opened while another is open becomes its child; ending a parent first ends every
-  child still open, innermost first, at the parent's end time. `end()` fixes the duration
-  (monotonic clock); calling it again does nothing.
+  child still open, innermost first, at the parent's end time (spans wrapped by a create
+  processor end when they are reached), with the context `{"implicit": true}`. `end()` fixes
+  the duration (monotonic clock); calling it again does nothing.
 - Spans rejected by the decision makers are `NullSpan`s: they keep nesting intact but are
   never passed to end processors.
 - Open spans are ended on `kernel.terminate` / `console.terminate` and on `kernel.reset`.
 - A failing assembler, decision maker, create or end processor never breaks the profiled
   code: the exception is logged on the default `logger` and profiling carries on. An
   exception from your own end handler reaches the code that called `end()` on that span
-  (after the span was processed); handlers of children ended implicitly are only logged.
+  (after every handler ran and the span was processed; only the first exception is
+  rethrown). Framework code ends spans with `ProfilingFactoryInterface::endSpan()`, which
+  logs instead; so do implicit and `endAll()` endings.
 
 ### Workers
 
 By default `kernel.reset` runs after every consumed message and ends every open span, so a
 `messenger:consume` entry in `commands` only measures the time until the first message.
 Profile workers with `messages` instead. A message span ends with the message's own
-handled/failed event; batch handlers acknowledge later, so their span ends when the next
-message arrives, with `acknowledged: false`. Vetoed messages are not profiled.
+handled/failed event; batch handlers acknowledge later, so their span ends when the worker
+moves on (`WorkerRunningEvent`, before `kernel.reset`), with `acknowledged: false`. Vetoed
+messages are not profiled.
 
 ### Extension points (autoconfigured by interface)
 

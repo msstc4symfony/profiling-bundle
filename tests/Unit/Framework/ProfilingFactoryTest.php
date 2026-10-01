@@ -22,7 +22,9 @@ use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\AbstractLogger;
 use RuntimeException;
+use Stringable;
 
 #[CoversClass(ProfilingFactory::class)]
 #[UsesClass(SpanAssembler::class)]
@@ -174,6 +176,76 @@ final class ProfilingFactoryTest extends TestCase
         self::assertSame(['c', 'b', 'a'], $this->recorder->messages());
         self::assertCount(1, $log->getRecords());
         self::assertNull($factory->createSpan('next')->getParentSpan());
+    }
+
+    public function testEndAllLogsHandlerFailuresAndClosesEverything(): void
+    {
+        $throwingHandler = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                // Registered before the factory's own handler, which must still run.
+                return $span->getMessage() === 'inner' ? $span->addEndHandler(static function (): never {
+                    throw new RuntimeException('processor handler');
+                }) : $span;
+            }
+        };
+        $log = new TestHandler();
+        $factory = new ProfilingFactory([new SpanAssembler()], [$throwingHandler], [$this->recorder], new Logger('app', [$log]));
+        $factory->createSpan('outer');
+        $factory->createSpan('inner');
+
+        $factory->endAll();
+
+        self::assertSame(['inner', 'outer'], $this->recorder->messages());
+        self::assertCount(1, $log->getRecords());
+        self::assertNull($factory->createSpan('next')->getParentSpan());
+    }
+
+    public function testEndSpanNeverThrows(): void
+    {
+        $factory = $this->factory();
+        $span = $factory->createSpan('x')->addEndHandler(static function (): never {
+            throw new RuntimeException('handler bug');
+        });
+
+        $factory->endSpan($span, ['k' => 'v']);
+
+        self::assertSame([['x', ['k' => 'v']]], $this->recorder->ended);
+    }
+
+    public function testABrokenLoggerDoesNotBreakTheProfiledCode(): void
+    {
+        $failing = new class implements EndSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span, array $context): void
+            {
+                throw new RuntimeException('processor bug');
+            }
+        };
+        $brokenLogger = new class extends AbstractLogger {
+            #[Override]
+            public function log($level, string|Stringable $message, array $context = []): void
+            {
+                throw new RuntimeException('logger down');
+            }
+        };
+        $factory = new ProfilingFactory([new SpanAssembler()], [], [$failing, $this->recorder], $brokenLogger);
+
+        $factory->createSpan('x')->end();
+
+        self::assertSame(['x'], $this->recorder->messages());
+    }
+
+    public function testImplicitlyEndedChildrenAreMarked(): void
+    {
+        $factory = $this->factory();
+        $parent = $factory->createSpan('parent');
+        $factory->createSpan('child');
+
+        $parent->end(['own' => true]);
+
+        self::assertSame([['child', ProfilingFactory::IMPLICIT_END], ['parent', ['own' => true]]], $this->recorder->ended);
     }
 
     public function testAThrowingHandlerOnTheEndedSpanReachesItsCallerAfterProcessing(): void

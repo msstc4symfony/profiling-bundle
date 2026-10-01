@@ -21,7 +21,9 @@
    вызывает повторной обработки.
 4. Процессоры — только для `isRecorded()`, каждый в try/catch → `logger->error`
    (логгер `logger`, не канал `profiling`: падающий `LoggerProcessor` не должен логировать в себя).
-5. `endAll()` / `reset()`: `end()` вершины, затем удаление её из стека по идентичности.
+5. `endAll()` / `reset()`: `endSpan()` вершины (лог вместо исключения), затем удаление её из
+   стека по идентичности. `endSpan()` — для любого кода фреймворка (listener'ы бандла).
+   Неявно закрытые дети получают контекст `ProfilingFactory::IMPLICIT_END`.
 
 ## Подключение
 
@@ -34,7 +36,8 @@
 - Listener'ы (все `ResetInterface`): `kernel.request` (main, не OPTIONS, `_route` в whitelist) /
   `console.command` (priority 4096) / `WorkerMessageReceivedEvent` (priority -1024, после veto;
   `instanceof` по whitelist); конец — `*.terminate` (затем на -4096 `endAll()`) /
-  Handled/Failed **своего** сообщения (контекст `failed`, `will_retry`) или следующий Received
+  Handled/Failed **своего** сообщения (контекст `failed`, `will_retry`), иначе
+  `WorkerRunningEvent` (priority 0, до `kernel.reset`) или следующий Received
   (`acknowledged: false`).
 - `LoggerProcessor` — `#[WithMonologChannel('profiling')]` (monolog-bundle >= 3.10, в
   `conflict`), `info`, сообщение `родитель > ... > span`, контекст `duration` + span + `end()`.

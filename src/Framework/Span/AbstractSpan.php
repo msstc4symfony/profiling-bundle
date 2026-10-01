@@ -105,8 +105,11 @@ abstract class AbstractSpan implements SpanInterface
         return (($this->endedAt ?? hrtime(true)) - $this->startedAt) / 1e9;
     }
 
+    /**
+     * Final: the factory may end a child through endAt(), which an override would miss.
+     */
     #[Override]
-    public function end(array $context = []): void
+    final public function end(array $context = []): void
     {
         $this->endAt(hrtime(true), $context);
     }
