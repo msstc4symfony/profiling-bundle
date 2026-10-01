@@ -16,15 +16,14 @@ in seconds and the span context).
 
 ## Installation
 
-The package lives in a private GitHub repository, so register it as a VCS repository first
-(`no-api` makes Composer clone over SSH instead of calling the GitHub API):
+The package is not on Packagist yet, so register its GitHub repository first:
 
 ```sh
-composer config repositories.msstc4symfony-profiling '{"type": "vcs", "url": "git@github.com:msstc4symfony/profiling-bundle.git", "no-api": true}'
+composer config repositories.msstc4symfony-profiling vcs https://github.com/msstc4symfony/profiling-bundle
 composer require msstc4symfony/profiling-bundle
 ```
 
-Register the bundle in `config/bundles.php` (Flex does not know private packages):
+Symfony Flex registers the bundle automatically; without Flex add it to `config/bundles.php`:
 
 ```php
 Msstc4Symfony\ProfilingBundle\ProfilingBundle::class => ['all' => true],
