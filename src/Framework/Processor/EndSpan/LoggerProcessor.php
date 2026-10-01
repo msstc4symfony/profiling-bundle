@@ -2,12 +2,15 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\Processor\EndSpan;
+namespace Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan;
 
-use Hot\ProfilingBundle\Framework\Span\SpanInterface;
+use Monolog\Attribute\WithMonologChannel;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Override;
 use Psr\Log\LoggerInterface;
 use Psr\Log\NullLogger;
 
+#[WithMonologChannel('profiling')]
 final readonly class LoggerProcessor implements EndSpanProcessorInterface
 {
     public function __construct(
@@ -15,6 +18,7 @@ final readonly class LoggerProcessor implements EndSpanProcessorInterface
     ) {
     }
 
+    #[Override]
     public function process(SpanInterface $span, array $context): void
     {
         $parentSpan = $span->getParentSpan();

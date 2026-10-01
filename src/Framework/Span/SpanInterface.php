@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\Span;
+namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
 
 interface SpanInterface
 {
     /**
-     * @param array<string, mixed> $context
+     * @param array<string, mixed> $context merged into the span context for end processors
      */
     public function end(array $context = []): void;
 
@@ -18,13 +18,29 @@ interface SpanInterface
      */
     public function getContext(): array;
 
-    public function getStartTime(): ?float;
+    public function getStartTime(): float;
 
     public function getParentSpan(): ?SpanInterface;
 
+    public function setParentSpan(?SpanInterface $parentSpan): static;
+
+    /**
+     * @return list<callable(SpanInterface, array<string, mixed>): void>
+     */
     public function getEndHandlers(): array;
 
+    /**
+     * @param callable(SpanInterface, array<string, mixed>): void $endHandler
+     */
     public function addEndHandler(callable $endHandler): static;
 
+    /**
+     * @param (callable(SpanInterface, array<string, mixed>): void)|int $endHandler handler or its index
+     */
     public function removeEndHandler(callable|int $endHandler): static;
+
+    /**
+     * Whether end processors (logging, metrics) should record this span.
+     */
+    public function isRecorded(): bool;
 }

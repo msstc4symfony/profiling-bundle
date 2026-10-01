@@ -2,18 +2,24 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework;
+namespace Msstc4Symfony\ProfilingBundle\Framework;
 
-use Hot\ProfilingBundle\Framework\Assembler\SpanAssemblerInterface;
-use Hot\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
-use Hot\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
-use Hot\ProfilingBundle\Framework\Span\NullableSpan;
-use Hot\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssemblerInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\NullableSpan;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Override;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
+use Symfony\Contracts\Service\ResetInterface;
 
-final class ProfilingFactory implements ProfilingFactoryInterface
+/**
+ * Keeps the stack of open spans. Ending a span first ends every span opened inside it,
+ * innermost first, so each of them reaches the end processors.
+ */
+final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterface
 {
-    /** @var SpanInterface[] */
+    /** @var list<SpanInterface> */
     private array $activeSpans = [];
 
     /**
@@ -31,79 +37,85 @@ final class ProfilingFactory implements ProfilingFactoryInterface
     ) {
     }
 
+    #[Override]
     public function createSpan(string $message, array $context = []): SpanInterface
     {
-        $last = end($this->activeSpans);
-        $last = $last instanceof SpanInterface ? $last : null;
-
-        foreach ($this->spanAssemblers as $spanAssembler) {
-            $span = $spanAssembler->assemble($message, $context);
-
-            if ($span instanceof SpanInterface) {
-                break;
-            }
-        }
-
-        if (!$span instanceof SpanInterface) {
-            $span = new NullableSpan($message, $context);
-        }
-
-        $span
-            ->setParentSpan($last)
-            ->addEndHandler($this->getEndCallback())
-        ;
+        $span = $this->assemble($message, $context);
+        $span->setParentSpan($this->activeSpans === [] ? null : $this->activeSpans[count($this->activeSpans) - 1]);
+        $span->addEndHandler($this->onEnd(...));
 
         foreach ($this->createSpanProcessors as $processor) {
             $span = $processor->process($span);
         }
 
         $this->activeSpans[] = $span;
-        $this->activeSpans = array_values($this->activeSpans);
 
         return $span;
     }
 
+    #[Override]
     public function endAll(): void
     {
-        foreach (array_reverse($this->activeSpans) as $i => $span) {
-            unset($this->activeSpans[$i]);
-
-            $span->end();
+        while ($this->activeSpans !== []) {
+            $this->endTop();
         }
     }
 
-    private function getEndCallback(): callable
+    #[Override]
+    public function reset(): void
     {
-        return function (SpanInterface $span, array $context): void {
-            $hash = spl_object_hash($span);
-            $ended = [];
-            $found = null;
-            foreach (array_reverse($this->activeSpans, true) as $i => $activeSpan) {
-                if (spl_object_hash($activeSpan) === $hash) {
-                    $found = $activeSpan;
-                    unset($this->activeSpans[$i]);
-                    break;
-                }
-                $ended[$i] = $activeSpan;
-            }
+        $this->endAll();
+    }
 
-            if ($found === null) {
-                return;
-            }
+    private function endTop(): void
+    {
+        $count = count($this->activeSpans);
+        $this->activeSpans[$count - 1]->end();
 
-            foreach ($this->endSpanProcessors as $processor) {
-                $processor->process($found, $context);
-            }
+        // A span whose end handler was removed would never leave the stack by itself.
+        if (count($this->activeSpans) === $count) {
+            array_pop($this->activeSpans);
+        }
+    }
 
-            foreach ($ended as $i => $endedSpan) {
-                unset($this->activeSpans[$i]);
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function assemble(string $message, array $context): SpanInterface
+    {
+        foreach ($this->spanAssemblers as $spanAssembler) {
+            $span = $spanAssembler->assemble($message, $context);
+            if ($span instanceof SpanInterface) {
+                return $span;
             }
+        }
 
-            $this->activeSpans = array_values($this->activeSpans);
+        return new NullableSpan($message, $context);
+    }
 
-            foreach ($ended as $endedSpan) {
-                $endedSpan->end();
-            }
-        };
+    /**
+     * @param array<string, mixed> $context
+     */
+    private function onEnd(SpanInterface $span, array $context): void
+    {
+        $position = array_search($span, $this->activeSpans, true);
+        if (!is_int($position)) {
+            return;
+        }
+
+        // Children still open are ended first, innermost first, through their own handlers.
+        while (count($this->activeSpans) - 1 > $position) {
+            $this->endTop();
+        }
+
+        array_splice($this->activeSpans, $position, 1);
+
+        if (!$span->isRecorded()) {
+            return;
+        }
+
+        foreach ($this->endSpanProcessors as $processor) {
+            $processor->process($span, $context);
+        }
     }
 }

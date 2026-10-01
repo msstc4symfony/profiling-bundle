@@ -8,7 +8,7 @@
     }
   ],
   "type": "symfony-bundle",
-  "description": "Lightweight span profiling for Symfony: nested timings for requests, commands and code blocks",
+  "description": "Lightweight span profiling for Symfony (CI profile — CI-only tools)",
   "minimum-stability": "stable",
   "keywords": [
     "php",
@@ -35,14 +35,18 @@
     "symfony/framework-bundle": "^6.4|^7.0|^8.0"
   },
   "require-dev": {
+    "deptrac/deptrac": "^4.6",
     "friendsofphp/php-cs-fixer": "^3.55",
+    "infection/infection": "^0.32",
     "phpstan/extension-installer": "^1.4",
     "phpstan/phpstan": "^2.1",
     "phpstan/phpstan-strict-rules": "^2.0",
     "phpstan/phpstan-symfony": "^2.0",
     "phpunit/phpunit": ">=11.0",
     "rector/rector": "^2.1",
-    "roave/security-advisories": "dev-latest"
+    "roave/backward-compatibility-check": "^8.20",
+    "roave/security-advisories": "dev-latest",
+    "symfony/monolog-bundle": "^3.11|^4.0"
   },
   "suggest": {
     "msstc4symfony/metrics-bundle": "To export span durations as Prometheus metrics (MetricProcessor)",
@@ -50,6 +54,7 @@
   },
   "config": {
     "allow-plugins": {
+      "infection/extension-installer": true,
       "phpstan/extension-installer": true
     },
     "sort-packages": true

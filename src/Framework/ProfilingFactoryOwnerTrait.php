@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework;
+namespace Msstc4Symfony\ProfilingBundle\Framework;
 
 use Symfony\Contracts\Service\Attribute\Required;
 
@@ -20,9 +20,7 @@ trait ProfilingFactoryOwnerTrait
 
     protected function getProfilingFactory(): ProfilingFactoryInterface
     {
-        if ($this->profilingFactory === null) {
-            $this->profilingFactory = new NullableProfilingFactory();
-        }
+        $this->profilingFactory ??= new NullableProfilingFactory();
 
         return $this->profilingFactory;
     }

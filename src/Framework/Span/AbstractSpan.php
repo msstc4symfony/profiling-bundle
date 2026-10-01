@@ -2,16 +2,18 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\Span;
+namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
+
+use Override;
 
 abstract class AbstractSpan implements SpanInterface
 {
-    protected float $startTime;
+    protected readonly float $startTime;
 
     protected ?SpanInterface $parentSpan = null;
 
     /**
-     * @var callable[]
+     * @var list<callable(SpanInterface, array<string, mixed>): void>
      */
     protected array $endHandlers = [];
 
@@ -19,31 +21,37 @@ abstract class AbstractSpan implements SpanInterface
      * @param array<string, mixed> $context
      */
     public function __construct(
-        protected string $message,
-        protected array $context,
+        protected readonly string $message,
+        protected readonly array $context = [],
     ) {
+        $this->startTime = microtime(true);
     }
 
+    #[Override]
     public function getMessage(): string
     {
         return $this->message;
     }
 
+    #[Override]
     public function getContext(): array
     {
         return $this->context;
     }
 
-    public function getStartTime(): ?float
+    #[Override]
+    public function getStartTime(): float
     {
         return $this->startTime;
     }
 
+    #[Override]
     public function getParentSpan(): ?SpanInterface
     {
         return $this->parentSpan;
     }
 
+    #[Override]
     public function setParentSpan(?SpanInterface $parentSpan): static
     {
         $this->parentSpan = $parentSpan;
@@ -51,14 +59,13 @@ abstract class AbstractSpan implements SpanInterface
         return $this;
     }
 
-    /**
-     * @return callable[]
-     */
+    #[Override]
     public function getEndHandlers(): array
     {
         return $this->endHandlers;
     }
 
+    #[Override]
     public function addEndHandler(callable $endHandler): static
     {
         $this->endHandlers[] = $endHandler;
@@ -66,19 +73,21 @@ abstract class AbstractSpan implements SpanInterface
         return $this;
     }
 
+    #[Override]
     public function removeEndHandler(callable|int $endHandler): static
     {
-        if (is_callable($endHandler)) {
-            $endHandler = array_search($endHandler, $this->endHandlers, true);
-        }
+        $index = is_int($endHandler) ? $endHandler : array_search($endHandler, $this->endHandlers, true);
 
-        if (is_int($endHandler) && isset($this->endHandlers[$endHandler])) {
-            unset($this->endHandlers[$endHandler]);
+        if (is_int($index) && isset($this->endHandlers[$index])) {
+            $handlers = $this->endHandlers;
+            unset($handlers[$index]);
+            $this->endHandlers = array_values($handlers);
         }
 
         return $this;
     }
 
+    #[Override]
     public function end(array $context = []): void
     {
         foreach ($this->endHandlers as $endHandler) {

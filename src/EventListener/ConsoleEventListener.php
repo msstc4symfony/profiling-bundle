@@ -2,26 +2,30 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\EventListener;
+namespace Msstc4Symfony\ProfilingBundle\EventListener;
 
-use Hot\ProfilingBundle\Framework\ProfilingFactoryInterface;
-use Hot\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Override;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
+use Symfony\Component\DependencyInjection\Attribute\Autowire;
 use Symfony\Component\EventDispatcher\Attribute\AsEventListener;
+use Symfony\Contracts\Service\ResetInterface;
 
 #[AsEventListener(event: ConsoleEvents::COMMAND, method: 'onCommand', priority: 4096)]
 #[AsEventListener(event: ConsoleEvents::TERMINATE, method: 'onTerminate')]
 #[AsEventListener(event: ConsoleEvents::TERMINATE, method: 'onTerminateEnd', priority: -4096)]
-final class ConsoleEventListener
+final class ConsoleEventListener implements ResetInterface
 {
     private ?SpanInterface $span = null;
 
     /**
-     * @param string[] $commandsWhitelist
+     * @param list<string> $commandsWhitelist
      */
     public function __construct(
         private readonly ProfilingFactoryInterface $profilingFactory,
+        #[Autowire(param: 'msstc4symfony_profiling.commands.whitelist')]
         private readonly array $commandsWhitelist = [],
     ) {
     }
@@ -29,7 +33,6 @@ final class ConsoleEventListener
     public function onCommand(ConsoleCommandEvent $event): void
     {
         $command = $event->getCommand()?->getName() ?? 'unknown';
-
         if (!in_array($command, $this->commandsWhitelist, true)) {
             return;
         }
@@ -39,15 +42,21 @@ final class ConsoleEventListener
 
     public function onTerminate(): void
     {
-        if (!$this->span instanceof SpanInterface) {
-            return;
-        }
-
-        $this->span->end();
+        $this->span?->end();
+        $this->span = null;
     }
 
+    /**
+     * Ends spans the command left open.
+     */
     public function onTerminateEnd(): void
     {
         $this->profilingFactory->endAll();
+    }
+
+    #[Override]
+    public function reset(): void
+    {
+        $this->span = null;
     }
 }

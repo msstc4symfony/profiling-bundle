@@ -2,17 +2,20 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\Span;
+namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
 
 use Override;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
 
+/**
+ * A span filtered out by the decision makers: it keeps the nesting intact but is not recorded.
+ */
 #[Exclude]
 final class NullableSpan extends AbstractSpan
 {
     #[Override]
-    public function end(array $context = []): void
+    public function isRecorded(): bool
     {
-        parent::end($context);
+        return false;
     }
 }

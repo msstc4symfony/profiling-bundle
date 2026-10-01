@@ -2,17 +2,17 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\Span;
+namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
 
+use Override;
 use Symfony\Component\DependencyInjection\Attribute\Exclude;
 
 #[Exclude]
 final class Span extends AbstractSpan
 {
-    public function __construct(string $message, array $context)
+    #[Override]
+    public function isRecorded(): bool
     {
-        parent::__construct($message, $context);
-
-        $this->startTime = microtime(true);
+        return true;
     }
 }

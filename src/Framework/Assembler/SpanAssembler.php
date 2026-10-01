@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\Assembler;
+namespace Msstc4Symfony\ProfilingBundle\Framework\Assembler;
 
-use Hot\ProfilingBundle\Framework\DecisionMaker\AllowSpan\AllowSpanDecisionMakerInterface;
-use Hot\ProfilingBundle\Framework\Span\NullableSpan;
-use Hot\ProfilingBundle\Framework\Span\Span;
-use Hot\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\AllowSpanDecisionMakerInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\NullableSpan;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 
 final readonly class SpanAssembler implements SpanAssemblerInterface

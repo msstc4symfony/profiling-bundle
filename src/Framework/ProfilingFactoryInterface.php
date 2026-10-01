@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework;
+namespace Msstc4Symfony\ProfilingBundle\Framework;
 
-use Hot\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 
 interface ProfilingFactoryInterface
 {

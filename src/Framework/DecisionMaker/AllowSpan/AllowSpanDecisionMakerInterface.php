@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace Hot\ProfilingBundle\Framework\DecisionMaker\AllowSpan;
+namespace Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan;
 
 use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 
