@@ -19,11 +19,13 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 
 ## Architecture in 60 seconds
 
-- `Framework\ProfilingFactory` keeps the stack of open spans (`ResetInterface`, `kernel.reset`).
-  Assemblers → create processors → stack; on `end()` children close innermost first, then
-  end processors run for recorded spans only.
-- `EventListener\RequestEventListener` / `ConsoleEventListener` open spans for whitelisted
-  routes/commands and call `endAll()` at the very end of terminate.
+- `Framework\ProfilingFactory` keeps the stack of open spans (`ResetInterface`).
+  Assemblers → create processors → stack; on `end()` the stack is settled first (children
+  close innermost first), then a non-reentrant queue runs end processors (try/catch) for
+  recorded spans only. `AbstractSpan::end()` is idempotent.
+- `EventListener\{Request,Console,Message}EventListener` open spans for configured
+  routes/commands/messages; terminate listeners call `endAll()` at the very end.
+- `ProfilingBundle` defines the `msstc4symfony_profiling` config tree.
 - `Resources/config/services.php` autoloads the whole namespace; extension points are
   autoconfigured by interface. Rector's `FromServicePublicToDefaultsPublicRector` and
   `ServiceSettersToSettersAutodiscoveryRector` are skipped on purpose.
@@ -34,7 +36,7 @@ a "weird" failure.**
 ## Pointers
 
 - `.claude/docs/architecture.md` — wiring, span lifecycle, layers.
-- `.claude/docs/conventions.md` — parameters, autoconfiguration, reset rules.
+- `.claude/docs/conventions.md` — configuration, span names, autoconfiguration, reset rules.
 - `.claude/docs/testing.md` — unit layout, real-kernel test.
 - `.claude/docs/tooling.md` — manifests, `make check`, Rector skips.
 - `.claude/docs/ci.md` — reusable workflow.

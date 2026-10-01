@@ -8,7 +8,8 @@ use Override;
 use Symfony\Component\DependencyInjection\Attribute\Autowire;
 
 /**
- * Prefix lists from configuration: a whitelist, when set, wins over the blacklist.
+ * Prefix lists from configuration (only one of them can be set). Abstains when neither is
+ * set and runs last, so application decision makers are asked first.
  */
 final readonly class ListBasedDecisionMaker implements AllowSpanDecisionMakerInterface
 {
@@ -27,11 +28,11 @@ final readonly class ListBasedDecisionMaker implements AllowSpanDecisionMakerInt
     #[Override]
     public static function getDefaultPriority(): int
     {
-        return 0;
+        return -1024;
     }
 
     #[Override]
-    public function isAllow(string $message): bool
+    public function isAllowed(string $message): ?bool
     {
         if ($this->spansWhitelist !== null) {
             return array_any($this->spansWhitelist, static fn (string $prefix): bool => str_starts_with($message, $prefix));
@@ -41,6 +42,6 @@ final readonly class ListBasedDecisionMaker implements AllowSpanDecisionMakerInt
             return array_all($this->spansBlacklist, static fn (string $prefix): bool => !str_starts_with($message, $prefix));
         }
 
-        return true;
+        return null;
     }
 }

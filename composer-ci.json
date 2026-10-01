@@ -30,9 +30,14 @@
     "php": ">=8.4",
     "composer-runtime-api": ">=2.2",
     "monolog/monolog": "^3.5",
+    "psr/log": "^2.0|^3.0",
+    "symfony/config": "^6.4|^7.0|^8.0",
     "symfony/console": "^6.4|^7.0|^8.0",
+    "symfony/dependency-injection": "^6.4|^7.0|^8.0",
     "symfony/event-dispatcher": "^6.4|^7.0|^8.0",
-    "symfony/framework-bundle": "^6.4|^7.0|^8.0"
+    "symfony/framework-bundle": "^6.4|^7.0|^8.0",
+    "symfony/http-foundation": "^6.4|^7.0|^8.0",
+    "symfony/http-kernel": "^6.4|^7.0|^8.0"
   },
   "require-dev": {
     "deptrac/deptrac": "^4.6",
@@ -46,10 +51,12 @@
     "rector/rector": "^2.1",
     "roave/backward-compatibility-check": "^8.20",
     "roave/security-advisories": "dev-latest",
+    "symfony/messenger": "^6.4|^7.0|^8.0",
     "symfony/monolog-bundle": "^3.11|^4.0"
   },
   "suggest": {
     "msstc4symfony/metrics-bundle": "To export span durations as Prometheus metrics (MetricProcessor)",
+    "symfony/messenger": "To profile consumed messages (messages option)",
     "symfony/monolog-bundle": "To write finished spans to the \"profiling\" log channel"
   },
   "config": {
@@ -60,6 +67,7 @@
     "sort-packages": true
   },
   "conflict": {
+    "symfony/monolog-bundle": "<3.10",
     "symfony/symfony": "*"
   },
   "extra": {

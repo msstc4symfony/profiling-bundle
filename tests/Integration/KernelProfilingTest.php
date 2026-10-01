@@ -1,0 +1,195 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Msstc4Symfony\ProfilingBundle\Test\Integration;
+
+use Monolog\Handler\TestHandler;
+use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
+use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
+use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
+use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\TestKernel;
+use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\TestWith;
+use PHPUnit\Framework\TestCase;
+use Symfony\Bundle\FrameworkBundle\Console\Application;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
+use Symfony\Component\Config\Definition\Processor;
+use Symfony\Component\Console\ConsoleEvents;
+use Symfony\Component\Console\Input\ArrayInput;
+use Symfony\Component\Console\Output\NullOutput;
+use Symfony\Component\DependencyInjection\ContainerBuilder;
+use Symfony\Component\DependencyInjection\ContainerInterface;
+use Symfony\Component\DependencyInjection\Extension\ConfigurationExtensionInterface;
+use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+use Symfony\Component\Filesystem\Filesystem;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpKernel\KernelEvents;
+use Symfony\Contracts\Service\ResetInterface;
+
+/**
+ * One request or command per test: a second kernel->handle() runs services_resetter, which
+ * also clears the monolog TestHandler.
+ */
+#[CoversNothing]
+final class KernelProfilingTest extends TestCase
+{
+    private TestKernel $kernel;
+
+    protected function setUp(): void
+    {
+        new Filesystem()->remove(TestKernel::cacheRoot());
+        $this->kernel = new TestKernel('test', false);
+        $this->kernel->boot();
+    }
+
+    protected function tearDown(): void
+    {
+        $this->kernel->shutdown();
+        new Filesystem()->remove(TestKernel::cacheRoot());
+    }
+
+    public function testWhitelistedRouteIsLoggedOnTheProfilingChannel(): void
+    {
+        $this->handle('/ping');
+
+        $records = $this->handler()->getRecords();
+        self::assertCount(1, $records);
+        self::assertSame('request ping', $records[0]->message);
+        self::assertSame('profiling', $records[0]->channel);
+    }
+
+    public function testOtherRoutesAreNotProfiled(): void
+    {
+        $this->handle('/other');
+
+        self::assertSame([], $this->handler()->getRecords());
+    }
+
+    public function testSpansLeftOpenByARequestAreEndedOnTerminate(): void
+    {
+        $this->handle('/orphan');
+
+        self::assertSame(['orphan'], $this->messages());
+    }
+
+    public function testWhitelistedCommandIsProfiled(): void
+    {
+        $this->runCommand('test:ping');
+
+        self::assertSame(['cli command test:ping'], $this->messages());
+    }
+
+    public function testSpansLeftOpenByACommandAreEndedOnTerminate(): void
+    {
+        $this->runCommand('test:orphan');
+
+        self::assertSame(['orphan'], $this->messages());
+    }
+
+    #[TestWith([KernelEvents::TERMINATE, RequestEventListener::class])]
+    #[TestWith([ConsoleEvents::TERMINATE, ConsoleEventListener::class])]
+    public function testTerminateEndsTheOwnSpanThenEverythingElse(string $event, string $listener): void
+    {
+        $dispatcher = $this->testContainer()->get('event_dispatcher');
+        self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
+
+        $methods = [];
+        foreach ($dispatcher->getListeners($event) as $callable) {
+            if (is_array($callable) && $callable[0] instanceof $listener && is_string($callable[1])) {
+                $methods[] = $callable[1];
+            }
+        }
+
+        self::assertSame(['onTerminate', 'onTerminateEnd'], $methods);
+    }
+
+    public function testKernelResetEndsOpenSpans(): void
+    {
+        $factory = $this->testContainer()->get(ProfilingFactoryInterface::class);
+        self::assertInstanceOf(ProfilingFactoryInterface::class, $factory);
+        $factory->createSpan('worker job');
+
+        $resetter = $this->kernel->getContainer()->get('test.services_resetter');
+        self::assertInstanceOf(ResetInterface::class, $resetter);
+        $resetter->reset();
+
+        self::assertSame(['worker job'], $this->messages());
+    }
+
+    public function testBothSpanListsCannotBeSet(): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+        $this->expectExceptionMessage('Set either "whitelist" or "blacklist"');
+
+        $this->processConfig(['spans' => ['whitelist' => ['a'], 'blacklist' => ['b']]]);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    #[TestWith([['routes' => [1]]])]
+    #[TestWith([['spans' => ['whitelist' => 'request ']]])]
+    public function testListsMustHoldStrings(array $config): void
+    {
+        $this->expectException(InvalidConfigurationException::class);
+
+        $this->processConfig($config);
+    }
+
+    /**
+     * @param array<string, mixed> $config
+     */
+    private function processConfig(array $config): void
+    {
+        $extension = new ProfilingBundle()->getContainerExtension();
+        self::assertInstanceOf(ConfigurationExtensionInterface::class, $extension);
+        $configuration = $extension->getConfiguration([], new ContainerBuilder());
+        self::assertNotNull($configuration);
+        new Processor()->processConfiguration($configuration, [$config]);
+    }
+
+    private function handle(string $path): void
+    {
+        $request = Request::create($path);
+        $response = $this->kernel->handle($request);
+        $this->kernel->terminate($request, $response);
+    }
+
+    private function runCommand(string $name): void
+    {
+        $application = new Application($this->kernel);
+        $application->setAutoExit(false);
+        $application->run(new ArrayInput(['command' => $name]), new NullOutput());
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function messages(): array
+    {
+        $messages = [];
+        foreach ($this->handler()->getRecords() as $record) {
+            $messages[] = $record->message;
+        }
+
+        return $messages;
+    }
+
+    private function handler(): TestHandler
+    {
+        $handler = $this->kernel->getContainer()->get('test.profiling_handler');
+        self::assertInstanceOf(TestHandler::class, $handler);
+
+        return $handler;
+    }
+
+    private function testContainer(): ContainerInterface
+    {
+        $container = $this->kernel->getContainer()->get('test.service_container');
+        self::assertInstanceOf(ContainerInterface::class, $container);
+
+        return $container;
+    }
+}

@@ -20,7 +20,7 @@ trait ProfilingFactoryOwnerTrait
 
     protected function getProfilingFactory(): ProfilingFactoryInterface
     {
-        $this->profilingFactory ??= new NullableProfilingFactory();
+        $this->profilingFactory ??= new NullProfilingFactory();
 
         return $this->profilingFactory;
     }

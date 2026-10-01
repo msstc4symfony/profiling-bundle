@@ -7,9 +7,18 @@ namespace Msstc4Symfony\ProfilingBundle\Framework\Span;
 interface SpanInterface
 {
     /**
+     * Fixes the duration and runs the end handlers; later calls do nothing.
+     *
      * @param array<string, mixed> $context merged into the span context for end processors
      */
     public function end(array $context = []): void;
+
+    public function isEnded(): bool;
+
+    /**
+     * Seconds from creation to end() (or to now while the span is open), monotonic clock.
+     */
+    public function getDuration(): float;
 
     public function getMessage(): string;
 
@@ -18,6 +27,9 @@ interface SpanInterface
      */
     public function getContext(): array;
 
+    /**
+     * Wall-clock creation time as a Unix timestamp; use getDuration() for elapsed time.
+     */
     public function getStartTime(): float;
 
     public function getParentSpan(): ?SpanInterface;

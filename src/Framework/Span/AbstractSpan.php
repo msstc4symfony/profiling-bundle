@@ -10,6 +10,10 @@ abstract class AbstractSpan implements SpanInterface
 {
     protected readonly float $startTime;
 
+    private readonly int $startedAt;
+
+    private ?int $endedAt = null;
+
     protected ?SpanInterface $parentSpan = null;
 
     /**
@@ -25,6 +29,7 @@ abstract class AbstractSpan implements SpanInterface
         protected readonly array $context = [],
     ) {
         $this->startTime = microtime(true);
+        $this->startedAt = hrtime(true);
     }
 
     #[Override]
@@ -88,8 +93,26 @@ abstract class AbstractSpan implements SpanInterface
     }
 
     #[Override]
+    public function isEnded(): bool
+    {
+        return $this->endedAt !== null;
+    }
+
+    #[Override]
+    public function getDuration(): float
+    {
+        return (($this->endedAt ?? hrtime(true)) - $this->startedAt) / 1e9;
+    }
+
+    #[Override]
     public function end(array $context = []): void
     {
+        if ($this->endedAt !== null) {
+            return;
+        }
+
+        $this->endedAt = hrtime(true);
+
         foreach ($this->endHandlers as $endHandler) {
             $endHandler($this, $context);
         }

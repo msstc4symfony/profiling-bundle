@@ -4,26 +4,31 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Unit\Framework;
 
+use Monolog\Handler\TestHandler;
+use Monolog\Logger;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
 use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\ListBasedDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
-use Msstc4Symfony\ProfilingBundle\Framework\Span\NullableSpan;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\DecoratingSpan;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
 use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
+use RuntimeException;
 
 #[CoversClass(ProfilingFactory::class)]
 #[UsesClass(SpanAssembler::class)]
 #[UsesClass(ListBasedDecisionMaker::class)]
 #[UsesClass(AbstractSpan::class)]
 #[UsesClass(Span::class)]
-#[UsesClass(NullableSpan::class)]
+#[UsesClass(NullSpan::class)]
 final class ProfilingFactoryTest extends TestCase
 {
     private RecordingEndProcessor $recorder;
@@ -101,7 +106,7 @@ final class ProfilingFactoryTest extends TestCase
 
         $kept->end();
 
-        self::assertInstanceOf(NullableSpan::class, $noisy);
+        self::assertInstanceOf(NullSpan::class, $noisy);
         self::assertSame(['inside noisy', 'kept'], $this->recorder->messages());
     }
 
@@ -114,29 +119,108 @@ final class ProfilingFactoryTest extends TestCase
         self::assertSame([], $this->recorder->ended);
     }
 
-    public function testCreateProcessorsCanReplaceTheSpan(): void
+    public function testCreateProcessorsCanWrapTheSpan(): void
     {
-        $replacement = new Span('replaced');
-        $processor = new readonly class($replacement) implements CreateSpanProcessorInterface {
-            public function __construct(private SpanInterface $replacement)
-            {
-            }
-
+        $processor = new class implements CreateSpanProcessorInterface {
             #[Override]
             public function process(SpanInterface $span): SpanInterface
             {
-                foreach ($span->getEndHandlers() as $handler) {
-                    $this->replacement->addEndHandler($handler);
-                }
-
-                return $this->replacement;
+                return new DecoratingSpan($span);
             }
         };
         $factory = new ProfilingFactory([new SpanAssembler()], [$processor], [$this->recorder]);
 
-        $factory->createSpan('original')->end();
+        $outer = $factory->createSpan('outer');
+        $inner = $factory->createSpan('inner');
+        self::assertSame($outer, $inner->getParentSpan());
+        $outer->end();
 
-        self::assertSame(['replaced'], $this->recorder->messages());
+        self::assertSame(['decorated inner', 'decorated outer'], $this->recorder->messages());
+    }
+
+    public function testAProcessorEndingAnAncestorKeepsOrderAndProcessesEachSpanOnce(): void
+    {
+        $factory = $this->factory();
+        $a = $factory->createSpan('a');
+        $b = $factory->createSpan('b');
+        $factory->createSpan('c');
+        $this->recorder->onProcess = static function (SpanInterface $span) use ($a): void {
+            if ($span->getMessage() === 'c') {
+                $a->end();
+            }
+        };
+
+        $b->end();
+
+        self::assertSame(['c', 'b', 'a'], $this->recorder->messages());
+    }
+
+    public function testAProcessorOpeningASpanDuringEndAllDoesNotLoseIt(): void
+    {
+        $factory = $this->factory();
+        $factory->createSpan('x');
+
+        $opened = false;
+        $this->recorder->onProcess = static function () use ($factory, &$opened): void {
+            if (!$opened) {
+                $opened = true;
+                $factory->createSpan('opened in processor');
+            }
+        };
+
+        $factory->endAll();
+
+        self::assertSame(['x', 'opened in processor'], $this->recorder->messages());
+    }
+
+    public function testAFailingProcessorIsLoggedAndDoesNotBreakTheCallerOrTheStack(): void
+    {
+        $failing = new class implements EndSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span, array $context): void
+            {
+                throw new RuntimeException('storage down');
+            }
+        };
+        $log = new TestHandler();
+        $factory = new ProfilingFactory([new SpanAssembler()], [], [$failing, $this->recorder], new Logger('app', [$log]));
+        $a = $factory->createSpan('a');
+        $factory->createSpan('b');
+
+        $a->end();
+        $next = $factory->createSpan('next');
+
+        self::assertSame(['b', 'a'], $this->recorder->messages());
+        self::assertNull($next->getParentSpan());
+        self::assertCount(2, $log->getRecords());
+        $exception = $log->getRecords()[0]->context['exception'] ?? null;
+        self::assertInstanceOf(RuntimeException::class, $exception);
+        self::assertSame('storage down', $exception->getMessage());
+    }
+
+    public function testASpanWithoutTheFactoryHandlerIsDroppedNotProcessed(): void
+    {
+        $factory = $this->factory();
+        $detached = $factory->createSpan('detached');
+        $detached->removeEndHandler(0);
+        $detached->end();
+
+        self::assertNull($factory->createSpan('next')->getParentSpan());
+
+        $factory->createSpan('another detached')->removeEndHandler(0);
+        $factory->endAll();
+
+        self::assertSame(['next'], $this->recorder->messages());
+    }
+
+    public function testEndingASpanTwiceProcessesItOnce(): void
+    {
+        $span = $this->factory()->createSpan('once');
+
+        $span->end();
+        $span->end();
+
+        self::assertSame(['once'], $this->recorder->messages());
     }
 
     private function factory(?ListBasedDecisionMaker $decisionMaker = null): ProfilingFactory

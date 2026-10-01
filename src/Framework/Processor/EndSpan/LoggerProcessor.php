@@ -31,7 +31,7 @@ final readonly class LoggerProcessor implements EndSpanProcessorInterface
         $this->profilingLogger->info(
             implode(' > ', array_reverse($parentMessages)),
             [
-                'duration' => round(microtime(true) - $span->getStartTime(), 6),
+                'duration' => round($span->getDuration(), 6),
             ] + array_merge($span->getContext(), $context),
         );
     }

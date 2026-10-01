@@ -9,7 +9,7 @@ use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 #[AutoconfigureTag(AllowSpanDecisionMakerInterface::class)]
 interface AllowSpanDecisionMakerInterface
 {
-    public function isAllow(string $message): ?bool;
+    public function isAllowed(string $message): ?bool;
 
     public static function getDefaultPriority(): int;
 }

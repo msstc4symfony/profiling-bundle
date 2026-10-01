@@ -30,7 +30,7 @@ only to log storage that is allowed to hold request metadata.
 
 ### 2. Profiling cost is opt-in
 
-Nothing is profiled until routes, commands or span prefixes are whitelisted. Whitelisting a
+Nothing is profiled until routes, commands or messages are configured. Whitelisting a
 high-traffic route adds one log record per request (plus one per nested span), so size the
 log pipeline accordingly.
 

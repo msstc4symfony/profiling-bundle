@@ -7,20 +7,29 @@ namespace Msstc4Symfony\ProfilingBundle\Framework;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssemblerInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
-use Msstc4Symfony\ProfilingBundle\Framework\Span\NullableSpan;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use Override;
+use Psr\Log\LoggerInterface;
+use Psr\Log\NullLogger;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Symfony\Contracts\Service\ResetInterface;
+use Throwable;
 
 /**
  * Keeps the stack of open spans. Ending a span first ends every span opened inside it,
- * innermost first, so each of them reaches the end processors.
+ * innermost first. The stack is settled before any end processor runs, and processors run
+ * from a queue, so a processor that opens or ends spans cannot reorder or repeat the work.
  */
 final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterface
 {
     /** @var list<SpanInterface> */
     private array $activeSpans = [];
+
+    /** @var list<array{SpanInterface, array<string, mixed>}> */
+    private array $endedSpans = [];
+
+    private bool $processing = false;
 
     /**
      * @param iterable<SpanAssemblerInterface> $spanAssemblers
@@ -34,20 +43,25 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         private readonly iterable $createSpanProcessors = [],
         #[AutowireIterator(tag: EndSpanProcessorInterface::class)]
         private readonly iterable $endSpanProcessors = [],
+        private readonly LoggerInterface $logger = new NullLogger(),
     ) {
     }
 
     #[Override]
     public function createSpan(string $message, array $context = []): SpanInterface
     {
-        $span = $this->assemble($message, $context);
-        $span->setParentSpan($this->activeSpans === [] ? null : $this->activeSpans[count($this->activeSpans) - 1]);
-        $span->addEndHandler($this->onEnd(...));
+        $this->dropEndedTop();
+        $parent = $this->activeSpans === [] ? null : $this->activeSpans[array_key_last($this->activeSpans)];
 
+        $span = $this->assemble($message, $context)->setParentSpan($parent);
         foreach ($this->createSpanProcessors as $processor) {
             $span = $processor->process($span);
         }
 
+        // Bound to the span that sits on the stack, which may wrap the assembled one.
+        $span->setParentSpan($parent)->addEndHandler(function (SpanInterface $ended, array $endContext) use ($span): void {
+            $this->onEnd($span, $endContext);
+        });
         $this->activeSpans[] = $span;
 
         return $span;
@@ -57,7 +71,10 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
     public function endAll(): void
     {
         while ($this->activeSpans !== []) {
-            $this->endTop();
+            $top = $this->activeSpans[array_key_last($this->activeSpans)];
+            $top->end();
+            // A span whose factory handler was removed never leaves the stack by itself.
+            $this->remove($top);
         }
     }
 
@@ -67,14 +84,22 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         $this->endAll();
     }
 
-    private function endTop(): void
+    /**
+     * Spans ended after their factory handler was removed are not processed; they only must
+     * not become parents.
+     */
+    private function dropEndedTop(): void
     {
-        $count = count($this->activeSpans);
-        $this->activeSpans[$count - 1]->end();
-
-        // A span whose end handler was removed would never leave the stack by itself.
-        if (count($this->activeSpans) === $count) {
+        while ($this->activeSpans !== [] && $this->activeSpans[array_key_last($this->activeSpans)]->isEnded()) {
             array_pop($this->activeSpans);
+        }
+    }
+
+    private function remove(SpanInterface $span): void
+    {
+        $position = array_search($span, $this->activeSpans, true);
+        if (is_int($position)) {
+            array_splice($this->activeSpans, $position, 1);
         }
     }
 
@@ -90,7 +115,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
             }
         }
 
-        return new NullableSpan($message, $context);
+        return new NullSpan($message, $context);
     }
 
     /**
@@ -103,19 +128,56 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
             return;
         }
 
-        // Children still open are ended first, innermost first, through their own handlers.
-        while (count($this->activeSpans) - 1 > $position) {
-            $this->endTop();
+        $children = array_reverse(array_slice($this->activeSpans, $position + 1));
+        $this->activeSpans = array_slice($this->activeSpans, 0, $position);
+
+        foreach ($children as $child) {
+            // Off the stack already, so its own factory handler does nothing.
+            $child->end();
+            $this->endedSpans[] = [$child, []];
         }
 
-        array_splice($this->activeSpans, $position, 1);
+        $this->endedSpans[] = [$span, $context];
+        $this->processEndedSpans();
+    }
 
-        if (!$span->isRecorded()) {
+    private function processEndedSpans(): void
+    {
+        if ($this->processing) {
             return;
         }
 
+        $this->processing = true;
+
+        try {
+            while ($this->endedSpans !== []) {
+                [$span, $context] = array_shift($this->endedSpans);
+                if ($span->isRecorded()) {
+                    $this->runEndProcessors($span, $context);
+                }
+            }
+        } finally {
+            $this->processing = false;
+        }
+    }
+
+    /**
+     * Profiling must never break the profiled code: a failing processor is logged and skipped.
+     *
+     * @param array<string, mixed> $context
+     */
+    private function runEndProcessors(SpanInterface $span, array $context): void
+    {
         foreach ($this->endSpanProcessors as $processor) {
-            $processor->process($span, $context);
+            try {
+                $processor->process($span, $context);
+            } catch (Throwable $exception) {
+                $this->logger->error('Profiling end processor {processor} failed for span "{span}".', [
+                    'processor' => $processor::class,
+                    'span' => $span->getMessage(),
+                    'exception' => $exception,
+                ]);
+            }
         }
     }
 }

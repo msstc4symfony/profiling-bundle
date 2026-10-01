@@ -9,6 +9,10 @@ use Override;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
 use Symfony\Bundle\MonologBundle\MonologBundle;
+use Symfony\Component\Console\Attribute\AsCommand;
+use Symfony\Component\Console\Command\Command;
+use Symfony\Component\Console\Input\InputInterface;
+use Symfony\Component\Console\Output\OutputInterface;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Kernel;
@@ -18,7 +22,7 @@ final class TestKernel extends Kernel
 {
     use MicroKernelTrait;
 
-    // Per process: infection runs PHPUnit in parallel and setUp() wipes this directory.
+    // Per process: parallel PHPUnit runs must not wipe each other's container.
     public static function cacheRoot(): string
     {
         return sys_get_temp_dir() . '/msstc4symfony-profiling-bundle-test-' . getmypid();
@@ -62,16 +66,33 @@ final class TestKernel extends Kernel
         $container->extension('monolog', [
             'handlers' => ['profiling' => ['type' => 'test', 'channels' => ['profiling']]],
         ]);
-        $container->parameters()->set('msstc4symfony_profiling.routes.whitelist', ['ping']);
+        $container->extension('msstc4symfony_profiling', [
+            'routes' => ['ping'],
+            'commands' => ['test:ping'],
+        ]);
 
+        $services = $container->services();
+        $services->defaults()->autowire()->autoconfigure();
+        $services->set(OrphanSpanOpener::class)->public();
+        $services->set(PingCommand::class);
         // Unused services are removed on compile; the tests fetch these.
-        $container->services()->alias('test.profiling_handler', 'monolog.handler.profiling')->public();
-        $container->services()->alias('test.services_resetter', 'services_resetter')->public();
+        $services->alias('test.profiling_handler', 'monolog.handler.profiling')->public();
+        $services->alias('test.services_resetter', 'services_resetter')->public();
     }
 
     protected function configureRoutes(RoutingConfigurator $routes): void
     {
         $routes->add('ping', '/ping')->controller('kernel::ping');
         $routes->add('other', '/other')->controller('kernel::ping');
+        $routes->add('orphan', '/orphan')->controller(OrphanSpanOpener::class . '::controller');
+    }
+}
+
+#[AsCommand('test:ping')]
+final class PingCommand extends Command
+{
+    protected function execute(InputInterface $input, OutputInterface $output): int
+    {
+        return Command::SUCCESS;
     }
 }
