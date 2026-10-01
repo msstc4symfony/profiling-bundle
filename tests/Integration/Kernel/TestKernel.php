@@ -30,10 +30,21 @@ final class TestKernel extends Kernel
         return sys_get_temp_dir() . '/msstc4symfony-profiling-bundle-test-' . getmypid();
     }
 
+    public static function hasMonologBundle(): bool
+    {
+        return class_exists(MonologBundle::class);
+    }
+
     #[Override]
     public function registerBundles(): iterable
     {
-        return [new FrameworkBundle(), new MonologBundle(), new ProfilingBundle()];
+        yield new FrameworkBundle();
+        // Optional (composer-ci.json only): the bundle must also boot without it.
+        if (self::hasMonologBundle()) {
+            yield new MonologBundle();
+        }
+
+        yield new ProfilingBundle();
     }
 
     #[Override]
@@ -65,9 +76,6 @@ final class TestKernel extends Kernel
             // The php_errors logger installs a global handler that outlives the kernel and trips failOnRisky.
             'php_errors' => ['log' => false],
         ]);
-        $container->extension('monolog', [
-            'handlers' => ['profiling' => ['type' => 'test', 'channels' => ['profiling']]],
-        ]);
         $container->extension('msstc4symfony_profiling', [
             'routes' => ['ping', '\\kept'],
             'commands' => ['test:ping'],
@@ -82,8 +90,14 @@ final class TestKernel extends Kernel
         $services->set(AbstainingDecisionMaker::class);
         $services->set(LateDecisionMaker::class);
         // Unused services are removed on compile; the tests fetch these.
-        $services->alias('test.profiling_handler', 'monolog.handler.profiling')->public();
         $services->alias('test.services_resetter', 'services_resetter')->public();
+
+        if (self::hasMonologBundle()) {
+            $container->extension('monolog', [
+                'handlers' => ['profiling' => ['type' => 'test', 'channels' => ['profiling']]],
+            ]);
+            $services->alias('test.profiling_handler', 'monolog.handler.profiling')->public();
+        }
     }
 
     protected function configureRoutes(RoutingConfigurator $routes): void

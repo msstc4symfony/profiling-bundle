@@ -5,21 +5,16 @@ declare(strict_types=1);
 namespace Msstc4Symfony\ProfilingBundle\Test\Unit\EventListener;
 
 use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
-use Msstc4Symfony\ProfilingBundle\EventListener\MessageEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
-use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
-use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
-use Override;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\ThrowingEndHandlerProcessor;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
 use PHPUnit\Framework\TestCase;
-use RuntimeException;
-use stdClass;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
 use Symfony\Component\Console\Input\ArrayInput;
@@ -27,14 +22,9 @@ use Symfony\Component\Console\Output\NullOutput;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpKernel\Event\RequestEvent;
 use Symfony\Component\HttpKernel\HttpKernelInterface;
-use Symfony\Component\Messenger\Envelope;
-use Symfony\Component\Messenger\Event\WorkerMessageFailedEvent;
-use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
-use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 
 #[CoversClass(RequestEventListener::class)]
 #[CoversClass(ConsoleEventListener::class)]
-#[CoversClass(MessageEventListener::class)]
 #[UsesClass(ProfilingFactory::class)]
 #[UsesClass(SpanAssembler::class)]
 #[UsesClass(AbstractSpan::class)]
@@ -49,24 +39,6 @@ final class ListenersTest extends TestCase
     {
         $this->recorder = new RecordingEndProcessor();
         $this->factory = new ProfilingFactory([new SpanAssembler()], [], [$this->recorder]);
-    }
-
-    /**
-     * Every span gets an end handler that throws, as a buggy create processor would add.
-     */
-    private function throwingFactory(): ProfilingFactory
-    {
-        $throwing = new class implements CreateSpanProcessorInterface {
-            #[Override]
-            public function process(SpanInterface $span): SpanInterface
-            {
-                return $span->addEndHandler(static function (): never {
-                    throw new RuntimeException('handler bug');
-                });
-            }
-        };
-
-        return new ProfilingFactory([new SpanAssembler()], [$throwing], [$this->recorder]);
     }
 
     public function testProfilesWhitelistedRoutesAndClosesLeftoversOnTerminate(): void
@@ -131,53 +103,11 @@ final class ListenersTest extends TestCase
         self::assertSame([], $this->recorder->ended);
     }
 
-    public function testProfilesWhitelistedMessagesWhileTheWorkerHandlesThem(): void
-    {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessageInterface::class]);
-        $profiled = new Envelope(new ProfiledMessage());
-
-        $listener->onReceived(new WorkerMessageReceivedEvent(new Envelope(new stdClass()), 'async'));
-        $listener->onHandled(new WorkerMessageHandledEvent(new Envelope(new stdClass()), 'async'));
-        $listener->onReceived(new WorkerMessageReceivedEvent($profiled, 'async'));
-        $listener->onHandled(new WorkerMessageHandledEvent($profiled, 'async'));
-        $listener->onReceived(new WorkerMessageReceivedEvent($profiled, 'async'));
-
-        $retried = new WorkerMessageFailedEvent($profiled, 'async', new RuntimeException('boom'));
-        $retried->setForRetry();
-
-        $listener->onFailed($retried);
-
-        self::assertSame([
-            ['message ' . ProfiledMessage::class, []],
-            ['message ' . ProfiledMessage::class, ['message_failed' => true, 'message_will_retry' => true]],
-        ], $this->recorder->ended);
-    }
-
-    public function testBatchedMessagesDoNotTakeEachOthersOutcome(): void
-    {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
-        $first = new Envelope(new ProfiledMessage());
-        $second = new Envelope(new ProfiledMessage());
-
-        $listener->onReceived(new WorkerMessageReceivedEvent($first, 'async'));
-        $listener->onReceived(new WorkerMessageReceivedEvent($second, 'async'));
-        $listener->onFailed(new WorkerMessageFailedEvent($first, 'async', new RuntimeException('boom')));
-        $listener->onHandled(new WorkerMessageHandledEvent($second, 'async'));
-
-        self::assertSame([
-            ['message ' . ProfiledMessage::class, MessageEventListener::NOT_ACKNOWLEDGED],
-            ['message ' . ProfiledMessage::class, []],
-        ], $this->recorder->ended);
-        $this->factory->endAll();
-        self::assertCount(2, $this->recorder->ended);
-    }
-
     public function testThrowingEndHandlersNeverEscapeTheListeners(): void
     {
-        $factory = $this->throwingFactory();
+        $factory = new ProfilingFactory([new SpanAssembler()], [new ThrowingEndHandlerProcessor()], [$this->recorder]);
         $request = new RequestEventListener($factory, ['orders']);
         $console = new ConsoleEventListener($factory, ['app:import']);
-        $message = new MessageEventListener($factory, [ProfiledMessage::class]);
 
         $request->onRequest($this->requestEvent('orders'));
         $request->onTerminate();
@@ -185,61 +115,7 @@ final class ListenersTest extends TestCase
         $console->onCommand(new ConsoleCommandEvent(new Command('app:import'), new ArrayInput([]), new NullOutput()));
         $console->onTerminate();
 
-        $envelope = new Envelope(new ProfiledMessage());
-        $message->onReceived(new WorkerMessageReceivedEvent($envelope, 'async'));
-        $message->onHandled(new WorkerMessageHandledEvent($envelope, 'async'));
-
-        self::assertSame(['request orders', 'cli command app:import', 'message ' . ProfiledMessage::class], $this->recorder->messages());
-    }
-
-    public function testHandledEventOfAnotherMessageDoesNotCloseTheSpan(): void
-    {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
-        $first = new Envelope(new ProfiledMessage());
-        $second = new Envelope(new ProfiledMessage());
-        $listener->onReceived(new WorkerMessageReceivedEvent($first, 'async'));
-        $listener->onReceived(new WorkerMessageReceivedEvent($second, 'async'));
-
-        $listener->onHandled(new WorkerMessageHandledEvent($first, 'async'));
-        self::assertCount(1, $this->recorder->ended);
-
-        $listener->onHandled(new WorkerMessageHandledEvent($second, 'async'));
-        self::assertCount(2, $this->recorder->ended);
-    }
-
-    public function testDeferredBatchSpanEndsWhenTheWorkerMovesOn(): void
-    {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
-        $listener->onReceived(new WorkerMessageReceivedEvent(new Envelope(new ProfiledMessage()), 'async'));
-
-        $listener->onWorkerRunning();
-        $listener->onWorkerRunning();
-
-        self::assertSame([['message ' . ProfiledMessage::class, MessageEventListener::NOT_ACKNOWLEDGED]], $this->recorder->ended);
-    }
-
-    public function testVetoedMessagesAreNotProfiled(): void
-    {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
-        $event = new WorkerMessageReceivedEvent(new Envelope(new ProfiledMessage()), 'async');
-        $event->shouldHandle(false);
-
-        $listener->onReceived($event);
-        $this->factory->endAll();
-
-        self::assertSame([], $this->recorder->ended);
-    }
-
-    public function testMessageListenerResetForgetsTheSpan(): void
-    {
-        $listener = new MessageEventListener($this->factory, [ProfiledMessage::class]);
-        $envelope = new Envelope(new ProfiledMessage());
-        $listener->onReceived(new WorkerMessageReceivedEvent($envelope, 'async'));
-
-        $listener->reset();
-        $listener->onHandled(new WorkerMessageHandledEvent($envelope, 'async'));
-
-        self::assertSame([], $this->recorder->ended);
+        self::assertSame(['request orders', 'cli command app:import'], $this->recorder->messages());
     }
 
     private function requestEvent(string $route, int $type = HttpKernelInterface::MAIN_REQUEST, string $method = 'GET'): RequestEvent
@@ -249,12 +125,4 @@ final class ListenersTest extends TestCase
 
         return new RequestEvent(self::createStub(HttpKernelInterface::class), $request, $type);
     }
-}
-
-interface ProfiledMessageInterface
-{
-}
-
-final class ProfiledMessage implements ProfiledMessageInterface
-{
 }

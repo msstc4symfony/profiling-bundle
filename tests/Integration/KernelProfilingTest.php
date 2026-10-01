@@ -16,10 +16,12 @@ use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\AbstainingDecisionMake
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\LateDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\TestKernel;
 use PHPUnit\Framework\Attributes\CoversNothing;
+use PHPUnit\Framework\Attributes\RequiresMethod;
 use PHPUnit\Framework\Attributes\TestWith;
 use PHPUnit\Framework\TestCase;
 use ReflectionProperty;
 use Symfony\Bundle\FrameworkBundle\Console\Application;
+use Symfony\Bundle\MonologBundle\MonologBundle;
 use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
 use Symfony\Component\Config\Definition\Processor;
 use Symfony\Component\Console\ConsoleEvents;
@@ -37,11 +39,15 @@ use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\EventListener\ResetServicesListener;
+use Symfony\Component\Messenger\Worker;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
  * One request or command per test: a second kernel->handle() runs services_resetter, which
  * also clears the monolog TestHandler.
+ *
+ * symfony/monolog-bundle and symfony/messenger are optional (composer-ci.json only): without
+ * them the kernel still boots and the tests needing them are skipped.
  */
 #[CoversNothing]
 final class KernelProfilingTest extends TestCase
@@ -61,6 +67,7 @@ final class KernelProfilingTest extends TestCase
         new Filesystem()->remove(TestKernel::cacheRoot());
     }
 
+    #[RequiresMethod(MonologBundle::class, 'build')]
     public function testWhitelistedRouteIsLoggedOnTheProfilingChannel(): void
     {
         $this->handle('/ping');
@@ -71,6 +78,7 @@ final class KernelProfilingTest extends TestCase
         self::assertSame('profiling', $records[0]->channel);
     }
 
+    #[RequiresMethod(MonologBundle::class, 'build')]
     public function testOtherRoutesAreNotProfiled(): void
     {
         $this->handle('/other');
@@ -78,6 +86,7 @@ final class KernelProfilingTest extends TestCase
         self::assertSame([], $this->handler()->getRecords());
     }
 
+    #[RequiresMethod(MonologBundle::class, 'build')]
     public function testSpansLeftOpenByARequestAreEndedOnTerminate(): void
     {
         $this->handle('/orphan');
@@ -85,6 +94,7 @@ final class KernelProfilingTest extends TestCase
         self::assertSame(['orphan'], $this->messages());
     }
 
+    #[RequiresMethod(MonologBundle::class, 'build')]
     public function testWhitelistedCommandIsProfiled(): void
     {
         $this->runCommand('test:ping');
@@ -92,6 +102,7 @@ final class KernelProfilingTest extends TestCase
         self::assertSame(['cli command test:ping'], $this->messages());
     }
 
+    #[RequiresMethod(MonologBundle::class, 'build')]
     public function testSpansLeftOpenByACommandAreEndedOnTerminate(): void
     {
         $this->runCommand('test:orphan');
@@ -116,6 +127,7 @@ final class KernelProfilingTest extends TestCase
         self::assertSame(['onTerminate', 'onTerminateEnd'], $methods);
     }
 
+    #[RequiresMethod(Worker::class, 'run')]
     public function testMessageListenerIsRegisteredWithMessenger(): void
     {
         $dispatcher = $this->testContainer()->get('event_dispatcher');
@@ -129,6 +141,7 @@ final class KernelProfilingTest extends TestCase
         }
     }
 
+    #[RequiresMethod(Worker::class, 'run')]
     public function testMessageSpansAreClosedBeforeKernelReset(): void
     {
         self::assertSame(-1024, $this->listenerPriority(WorkerMessageReceivedEvent::class, 'onReceived'));
@@ -166,6 +179,7 @@ final class KernelProfilingTest extends TestCase
         self::assertSame(['sql '], $container->getParameter('msstc4symfony_profiling.spans.blacklist'));
     }
 
+    #[RequiresMethod(MonologBundle::class, 'build')]
     public function testKernelResetEndsOpenSpans(): void
     {
         $factory = $this->testContainer()->get(ProfilingFactoryInterface::class);
