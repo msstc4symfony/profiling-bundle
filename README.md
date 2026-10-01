@@ -111,12 +111,12 @@ measure the dispatch.
 | `AllowSpanDecisionMakerInterface` | votes whether a span is recorded (`true`/`false`/`null` = abstain); asked by priority (`#[AsTaggedItem(priority: ...)]`), the first vote wins. The built-in list maker runs last (-1024) and abstains when no list is set |
 | `SpanAssemblerInterface` | builds the span object for a message |
 | `CreateSpanProcessorInterface` | can enrich or wrap a span when it is created. A wrapper must delegate `end()`, `isEnded()` and `addEndHandler()` to the wrapped span; the factory binds its end handler to the returned span |
-| `EndSpanProcessorInterface` | receives every recorded span once, after it ended (`LoggerProcessor` is built in; `msstc4symfony/metrics-bundle` adds Prometheus durations). Order with `#[AsTaggedItem(priority: ...)]` |
+| `EndSpanProcessorInterface` | receives every recorded span once, after it ended (`LoggerProcessor` is built in; `msstc4symfony/metrics-bridge-profiling` adds Prometheus durations). Order with `#[AsTaggedItem(priority: ...)]` |
 
 Do not remove the factory's own end handler (`getEndHandlers()` lists it): such a span is
 never processed and is dropped from the stack.
 
-Span messages become log messages and, with metrics-bundle, Prometheus label values: keep
+Span messages become log messages and, with metrics-bridge-profiling, Prometheus label values: keep
 them low-cardinality (`request orders_show`, not `request /orders/42`) and put ids into the
 context.
 

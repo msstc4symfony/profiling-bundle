@@ -42,8 +42,9 @@
   делает `array_merge` с контекстом span, общие ключи затёрли бы прикладные.
 - `LoggerProcessor` — `#[WithMonologChannel('profiling')]` (monolog-bundle >= 3.10, в
   `conflict`), `info`, сообщение `родитель > ... > span`, контекст `duration` + span + `end()`.
-- `MetricProcessor` живёт в metrics-bundle (`Framework/Profiling/...`); должен брать
-  `getDuration()`, а не `microtime - getStartTime()`.
+- Экспорт в Prometheus — отдельный пакет `msstc4symfony/metrics-bridge-profiling`
+  (`MetricEndSpanProcessor`, берёт `getDuration()`); устаревший `MetricProcessor` в metrics 1.x
+  мост отключает.
 
 ## Слои (deptrac)
 

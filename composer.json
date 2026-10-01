@@ -50,7 +50,7 @@
     "roave/security-advisories": "dev-latest"
   },
   "suggest": {
-    "msstc4symfony/metrics-bundle": "To export span durations as Prometheus metrics (MetricProcessor)",
+    "msstc4symfony/metrics-bridge-profiling": "To export span durations as Prometheus metrics",
     "symfony/messenger": "To profile consumed messages (messages option)",
     "symfony/monolog-bundle": "To write finished spans to the \"profiling\" log channel"
   },
