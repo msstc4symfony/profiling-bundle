@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.1.0
+
+- A command listed in `commands` keeps its span across `kernel.reset`: `messenger:consume`
+  (which resets services after every message) is now measured until `console.terminate`
+  instead of until the first message. Spans opened above it still end on reset.
+- New `ProfilingFactory::keepOpenOnReset(SpanInterface)`: `reset()` leaves a marked span and
+  the spans below it open; `endAll()` still ends them. `ConsoleEventListener::reset()` no
+  longer forgets the command span.
+- `symfony/service-contracts` (`^2.5|^3`) is declared in `require`; it was only pulled in
+  transitively.
+- Tooling: bundle-standard v1.8.0 (blocking BC check and Infection with minimum MSI 82, a
+  `--prefer-lowest` PHPUnit cell), PHPStan level 10.
+
 ## 1.0.0
 
 First release as `msstc4symfony/profiling-bundle` (`Msstc4Symfony\ProfilingBundle`), MIT.

@@ -8,7 +8,14 @@
   `extension('msstc4symfony_profiling', ...)`): маршрут и команда из whitelist, «осиротевший»
   корневой span (`OrphanSpanOpener` — контроллер и команда) закрывается на terminate, порядок
   подписок на `kernel.terminate`/`console.terminate`, `services_resetter`, валидация дерева.
-  Приватные сервисы — через `test.service_container`.
+  Приватные сервисы — через `test.service_container`. С messenger ядро поднимает транспорт
+  `memory` (`in-memory://`) и `ProfiledMessageHandler`; тест гоняет настоящий
+  `messenger:consume memory --limit=1`. Span ловит `test.recorder` (`RecordingEndProcessor`):
+  `TestHandler` и `InMemoryTransport` — `ResetInterface`, их чистит каждый `kernel.reset`
+  (поэтому сообщение одно — второе reset выбросил бы из очереди).
+- `tearDown()` ядра снимает exception handler'ы, оставшиеся сверх сохранённого в `setUp()`:
+  `symfony/error-handler` < 6.4.44 не снимает handler, который ставит `FrameworkBundle::boot()`,
+  и на `--prefer-lowest` каждый kernel-тест становился risky (`failOnRisky`).
 - Реентерабельность фабрики: `RecordingEndProcessor::$onProcess` открывает/закрывает span из
   процессора; `DecoratingSpan` — обёртка из create-процессора.
 - **Один запрос на тест**: второй `kernel->handle()` вызывает `services_resetter`, а
@@ -27,4 +34,4 @@
   загружается без обоих пакетов. Фикстуры с опциональными типами — только в отдельных файлах
   `tests/Unit/Fixture/` (класс на уровне файла теста грузится вместе с тестом).
   Локальная проверка: копия репо без vendor, `rm composer.lock`, `composer update` по
-  `composer.json`, затем `vendor/bin/phpunit` → 64 теста, 15 skipped.
+  `composer.json`, затем `vendor/bin/phpunit` → 69 тестов, 16 skipped.

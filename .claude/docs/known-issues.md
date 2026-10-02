@@ -20,8 +20,12 @@
 
 ## Текущие особенности
 
-- Команды-воркеры в `commands` (`messenger:consume`): `kernel.reset` после первого
-  сообщения закрывает span команды. Для воркеров — опция `messages` (описано в README).
+- До 1.1.0: команды-воркеры в `commands` (`messenger:consume`) — `kernel.reset` после первого
+  сообщения закрывал span команды (`ProfilingFactory::reset()` = `endAll()`, а
+  `ConsoleEventListener::reset()` забывал span). С 1.1.0 span команды помечается
+  `keepOpenOnReset()`, `ConsoleEventListener::reset()` ничего не делает. Метод есть только у
+  `ProfilingFactory` (добавить в `ProfilingFactoryInterface` — BC break): если приложение
+  декорирует фабрику, listener не может пометить span и поведение прежнее.
 - Ревью 2 (2026-10-01 UTC): один span в `MessageEventListener` путал исходы батчей
   (Received A, Received B, Failed A приписывалось B) — теперь span закрывается только событием
   своего сообщения, незакрытый — на следующем Received с `message_acknowledged: false`; listener на
@@ -47,10 +51,20 @@
   `getListenerPriority()` вернёт `null` (тест флакал).
 - Symfony 8.1 объявил устаревшим `defaultPriorityMethod`/`getDefaultPriority()` для tagged
   iterators — приоритеты только через `#[AsTaggedItem]`.
-- `symfony/service-contracts` не объявлен в `require`, хотя используется (`ResetInterface`,
-  `#[Required]`): верификатор стандарта требует для всех `symfony/*` `^6.4|^7.0|^8.0`, а
-  contracts версионируются `^3`. Приходит через `symfony/dependency-injection`.
-- PHPStan `level: 9`, хотя код чист на `max`: верификатор стандарта требует строку `level: 9`.
+- С 1.1.0 (bundle-standard v1.8.0) `symfony/service-contracts: ^2.5|^3` объявлен в `require`,
+  PHPStan — `level: 10` (раньше верификатор разрешал только `^6.4|^7.0|^8.0` и `level: 9`).
+- `--prefer-lowest` (PHP 8.4, Symfony 6.4.0): виновник risky «did not remove its own exception
+  handlers» — транзитивный `symfony/error-handler` < 6.4.44 (исправлен в 6.4.44:
+  `ErrorHandler::register()` снимает свой exception handler, если ставил его поверх чужого).
+  Поднимать нижнюю границу не стали — пакет не прямая зависимость, а проблема только в тестах;
+  `KernelProfilingTest::tearDown()` восстанавливает стек handler'ов. Найдено бисекцией
+  2026-10-02 UTC. На messenger 6.4.0 + PHP 8.4 в stderr сыплются deprecation «Implicitly
+  marking parameter as nullable» из vendor — это не падение.
+- `final`: все конкретные классы `src/` уже `final`; `AbstractSpan` — точка расширения. На 2.0:
+  `AbstractSpan::endAt()`/`getEndedAt()` (`@internal`, но public и не final — Roave считает
+  final/сужение видимости BC break), `protected` свойства `AbstractSpan` → `private`,
+  `keepOpenOnReset()` → в `ProfilingFactoryInterface`, убрать no-op `ConsoleEventListener::reset()`
+  вместе с `ResetInterface`.
 - Повторный `end()` у span безвреден: его уже нет в стеке, процессоры второй раз не идут.
 - В тестах ядра второй `handle()` сбрасывает `TestHandler` (см. `testing.md`).
 

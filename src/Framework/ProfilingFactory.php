@@ -16,6 +16,7 @@ use Psr\Log\NullLogger;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
+use WeakMap;
 
 /**
  * Keeps the stack of open spans. Ending a span first ends every span opened inside it,
@@ -34,6 +35,9 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
 
     private bool $processing = false;
 
+    /** @var WeakMap<SpanInterface, true> */
+    private WeakMap $keptOpenOnReset;
+
     /**
      * @param iterable<SpanAssemblerInterface> $spanAssemblers
      * @param iterable<CreateSpanProcessorInterface> $createSpanProcessors
@@ -48,6 +52,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         private readonly iterable $endSpanProcessors = [],
         private readonly LoggerInterface $logger = new NullLogger(),
     ) {
+        $this->keptOpenOnReset = new WeakMap();
     }
 
     #[Override]
@@ -94,18 +99,40 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
     #[Override]
     public function endAll(): void
     {
-        while ($this->activeSpans !== []) {
-            $top = $this->activeSpans[array_key_last($this->activeSpans)];
-            $this->endSpan($top, self::IMPLICIT_END);
-            // A span whose factory handler was removed never leaves the stack by itself.
-            $this->remove($top);
-        }
+        $this->endOpenSpans(keepMarked: false);
+    }
+
+    /**
+     * Lets an open span, and therefore the spans below it, survive reset(): for spans covering
+     * many units of work, such as a worker command, whose kernel.reset runs after every message.
+     * Spans opened above it still end on reset(); endAll() ends it too.
+     */
+    public function keepOpenOnReset(SpanInterface $span): void
+    {
+        $this->keptOpenOnReset[$span] = true;
     }
 
     #[Override]
     public function reset(): void
     {
-        $this->endAll();
+        $this->endOpenSpans(keepMarked: true);
+    }
+
+    /**
+     * @param bool $keepMarked stop at the topmost span marked by keepOpenOnReset()
+     */
+    private function endOpenSpans(bool $keepMarked): void
+    {
+        while ($this->activeSpans !== []) {
+            $top = $this->activeSpans[array_key_last($this->activeSpans)];
+            if ($keepMarked && ($this->keptOpenOnReset[$top] ?? false)) {
+                return;
+            }
+
+            $this->endSpan($top, self::IMPLICIT_END);
+            // A span whose factory handler was removed never leaves the stack by itself.
+            $this->remove($top);
+        }
     }
 
     /**

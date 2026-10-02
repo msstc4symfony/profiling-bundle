@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\EventListener;
 
+use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
 use Override;
@@ -38,6 +39,9 @@ final class ConsoleEventListener implements ResetInterface
         }
 
         $this->span = $this->profilingFactory->createSpan('cli command ' . $command);
+        if ($this->profilingFactory instanceof ProfilingFactory) {
+            $this->profilingFactory->keepOpenOnReset($this->span);
+        }
     }
 
     public function onTerminate(): void
@@ -56,9 +60,12 @@ final class ConsoleEventListener implements ResetInterface
         $this->profilingFactory->endAll();
     }
 
+    /**
+     * Keeps the span: kernel.reset runs between the messages of messenger:consume, and the
+     * command span must cover the whole run until console.terminate.
+     */
     #[Override]
     public function reset(): void
     {
-        $this->span = null;
     }
 }

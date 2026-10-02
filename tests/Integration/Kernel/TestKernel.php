@@ -6,6 +6,8 @@ namespace Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel;
 
 use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\AllowSpanDecisionMakerInterface;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\ProfiledMessage;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
 use Override;
 use Symfony\Bundle\FrameworkBundle\FrameworkBundle;
 use Symfony\Bundle\FrameworkBundle\Kernel\MicroKernelTrait;
@@ -18,6 +20,7 @@ use Symfony\Component\DependencyInjection\Attribute\AsTaggedItem;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpFoundation\Response;
 use Symfony\Component\HttpKernel\Kernel;
+use Symfony\Component\Messenger\Worker;
 use Symfony\Component\Routing\Loader\Configurator\RoutingConfigurator;
 
 final class TestKernel extends Kernel
@@ -33,6 +36,11 @@ final class TestKernel extends Kernel
     public static function hasMonologBundle(): bool
     {
         return class_exists(MonologBundle::class);
+    }
+
+    public static function hasMessenger(): bool
+    {
+        return class_exists(Worker::class);
     }
 
     #[Override]
@@ -78,8 +86,8 @@ final class TestKernel extends Kernel
         ]);
         $container->extension('msstc4symfony_profiling', [
             'routes' => ['ping', '\\kept'],
-            'commands' => ['test:ping'],
-            'messages' => ['\\App\\Message\\Import'],
+            'commands' => ['test:ping', 'messenger:consume'],
+            'messages' => ['\\App\\Message\\Import', ProfiledMessage::class],
             'spans' => ['blacklist' => ['sql ']],
         ]);
 
@@ -89,8 +97,21 @@ final class TestKernel extends Kernel
         $services->set(PingCommand::class);
         $services->set(AbstainingDecisionMaker::class);
         $services->set(LateDecisionMaker::class);
+        // Not resettable, unlike the monolog TestHandler: keeps spans ended before a kernel.reset.
+        $services->set('test.recorder', RecordingEndProcessor::class)->public();
         // Unused services are removed on compile; the tests fetch these.
         $services->alias('test.services_resetter', 'services_resetter')->public();
+
+        if (self::hasMessenger()) {
+            $container->extension('framework', [
+                'messenger' => [
+                    'transports' => ['memory' => 'in-memory://'],
+                    'routing' => [ProfiledMessage::class => 'memory'],
+                ],
+            ]);
+            $services->set(ProfiledMessageHandler::class);
+            $services->alias('test.message_bus', 'messenger.default_bus')->public();
+        }
 
         if (self::hasMonologBundle()) {
             $container->extension('monolog', [

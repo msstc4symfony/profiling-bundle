@@ -22,7 +22,10 @@
 4. Процессоры — только для `isRecorded()`, каждый в try/catch → `logger->error`
    (логгер `logger`, не канал `profiling`: падающий `LoggerProcessor` не должен логировать в себя).
 5. `endAll()` / `reset()`: `endSpan()` вершины (лог вместо исключения), затем удаление её из
-   стека по идентичности. `endSpan()` — для любого кода фреймворка (listener'ы бандла).
+   стека по идентичности. `reset()` останавливается на верхнем span, помеченном
+   `ProfilingFactory::keepOpenOnReset()` (`WeakMap`): он и всё под ним остаются открытыми.
+   Помечает `ConsoleEventListener` — span команды живёт до `console.terminate`, хотя
+   `messenger:consume` зовёт `kernel.reset` после каждого сообщения. `endAll()` закрывает всё. `endSpan()` — для любого кода фреймворка (listener'ы бандла).
    Неявно закрытые дети получают контекст `ProfilingFactory::IMPLICIT_END`.
 
 ## Подключение

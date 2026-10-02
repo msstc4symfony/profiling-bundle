@@ -101,6 +101,51 @@ final class ProfilingFactoryTest extends TestCase
         self::assertSame(['left-open'], $this->recorder->messages());
     }
 
+    public function testResetKeepsASpanMarkedToOutliveResetsAndEndsEverythingAboveIt(): void
+    {
+        $factory = $this->factory();
+        $worker = $factory->createSpan('worker');
+        $factory->keepOpenOnReset($worker);
+        $factory->createSpan('job');
+
+        $factory->reset();
+        $factory->reset();
+
+        self::assertFalse($worker->isEnded());
+        self::assertSame(['job'], $this->recorder->messages());
+        self::assertSame(ProfilingFactoryInterface::IMPLICIT_END, $this->recorder->ended[0][1]);
+        self::assertSame($worker, $factory->createSpan('next job')->getParentSpan());
+
+        $worker->end();
+
+        self::assertSame(['job', 'next job', 'worker'], $this->recorder->messages());
+        self::assertSame([], $this->recorder->ended[2][1]);
+    }
+
+    public function testResetKeepsTheAncestorsOfASpanMarkedToOutliveResets(): void
+    {
+        $factory = $this->factory();
+        $root = $factory->createSpan('root');
+        $factory->keepOpenOnReset($factory->createSpan('worker'));
+
+        $factory->reset();
+
+        self::assertFalse($root->isEnded());
+        self::assertSame([], $this->recorder->messages());
+    }
+
+    public function testEndAllStillEndsASpanMarkedToOutliveResets(): void
+    {
+        $factory = $this->factory();
+        $worker = $factory->createSpan('worker');
+        $factory->keepOpenOnReset($worker);
+
+        $factory->endAll();
+
+        self::assertTrue($worker->isEnded());
+        self::assertSame(['worker'], $this->recorder->messages());
+    }
+
     public function testFilteredOutSpansAreNotProcessedButKeepNesting(): void
     {
         $factory = $this->factory(new ListBasedDecisionMaker(spansBlacklist: ['noisy']));

@@ -16,7 +16,7 @@ use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Contracts\Service\ResetInterface;
 
 /**
- * One span per consumed message: a worker command span would end at the first kernel.reset.
+ * One span per consumed message.
  *
  * The span is closed by its own message's handled/failed event. Batch handlers acknowledge
  * later, so a span still open when the worker moves on (WorkerRunningEvent, before

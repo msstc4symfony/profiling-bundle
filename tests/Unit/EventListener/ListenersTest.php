@@ -88,19 +88,41 @@ final class ListenersTest extends TestCase
         self::assertSame(['cli command unknown'], $this->recorder->messages());
     }
 
-    public function testResetForgetsTheSpanSoTerminateDoesNotEndIt(): void
+    public function testResetForgetsTheRequestSpanSoTerminateDoesNotEndIt(): void
     {
         $request = new RequestEventListener($this->factory, ['orders']);
-        $console = new ConsoleEventListener($this->factory, ['app:import']);
         $request->onRequest($this->requestEvent('orders'));
-        $console->onCommand(new ConsoleCommandEvent(new Command('app:import'), new ArrayInput([]), new NullOutput()));
 
         $request->reset();
-        $console->reset();
         $request->onTerminate();
-        $console->onTerminate();
 
         self::assertSame([], $this->recorder->ended);
+    }
+
+    /**
+     * messenger:consume resets services after every message; the command span must cover the whole run.
+     */
+    public function testACommandSpanOutlivesResetsUntilTheCommandTerminates(): void
+    {
+        $console = new ConsoleEventListener($this->factory, ['messenger:consume']);
+        $console->onCommand(new ConsoleCommandEvent(new Command('messenger:consume'), new ArrayInput([]), new NullOutput()));
+
+        $this->factory->createSpan('message');
+
+        $this->factory->reset();
+
+        $console->reset();
+        $console->reset();
+
+        $this->factory->reset();
+
+        self::assertSame(['message'], $this->recorder->messages());
+
+        $console->onTerminate();
+        $console->onTerminateEnd();
+
+        self::assertSame(['message', 'cli command messenger:consume'], $this->recorder->messages());
+        self::assertSame([], $this->recorder->ended[1][1]);
     }
 
     public function testThrowingEndHandlersNeverEscapeTheListeners(): void

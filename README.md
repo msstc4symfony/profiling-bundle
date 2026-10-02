@@ -41,7 +41,8 @@ msstc4symfony_profiling:
     # kernel.request at priority 0 (after the router and the firewall) and ends on
     # kernel.terminate, i.e. after the response was sent.
     routes: ['api_orders_list']
-    # Console commands with these names get a "cli command <name>" span.
+    # Console commands with these names get a "cli command <name>" span, from console.command
+    # to console.terminate (kernel.reset in between, e.g. in messenger:consume, keeps it open).
     commands: ['app:import']
     # Messages of these classes (or their parents/interfaces) get a "message <class>" span
     # while a worker handles them (needs symfony/messenger).
@@ -83,7 +84,9 @@ a `#[Required]` setter and falls back to a no-op factory outside the container.
   the duration (monotonic clock); calling it again does nothing.
 - Spans rejected by the decision makers are `NullSpan`s: they keep nesting intact but are
   never passed to end processors.
-- Open spans are ended on `kernel.terminate` / `console.terminate` and on `kernel.reset`.
+- Open spans are ended on `kernel.terminate` / `console.terminate` and on `kernel.reset`; a
+  running command's span (`commands`) and the spans below it survive `kernel.reset`
+  (`ProfilingFactory::keepOpenOnReset()`).
 - A failing assembler, decision maker, create or end processor never breaks the profiled
   code: the exception is logged on the default `logger` and profiling carries on. An
   exception from your own end handler reaches the code that called `end()` on that span
@@ -93,9 +96,11 @@ a `#[Required]` setter and falls back to a no-op factory outside the container.
 
 ### Workers
 
-By default `kernel.reset` runs after every consumed message and ends every open span, so a
-`messenger:consume` entry in `commands` only measures the time until the first message.
-Profile workers with `messages` instead. A message span ends with the message's own
+`kernel.reset` runs after every consumed message and ends every open span except the span of
+a command listed in `commands`: a `messenger:consume` entry measures the whole run, until
+`console.terminate`. Profile each message with `messages`; its span becomes a child of that
+command span when both are configured. Spans left open by a handler end with the message
+span or, without one, with the next `kernel.reset`. A message span ends with the message's own
 handled/failed event; batch handlers acknowledge later, so their span ends when the worker
 moves on (`WorkerRunningEvent`, before `kernel.reset`), with `message_acknowledged: false`.
 Failures add `message_failed` and `message_will_retry`. Vetoed messages are not profiled. This

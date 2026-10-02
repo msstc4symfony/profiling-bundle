@@ -15,6 +15,8 @@ use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\AbstainingDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\LateDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\TestKernel;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\ProfiledMessage;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\RequiresMethod;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -39,8 +41,10 @@ use Symfony\Component\Messenger\Event\WorkerMessageHandledEvent;
 use Symfony\Component\Messenger\Event\WorkerMessageReceivedEvent;
 use Symfony\Component\Messenger\Event\WorkerRunningEvent;
 use Symfony\Component\Messenger\EventListener\ResetServicesListener;
+use Symfony\Component\Messenger\MessageBusInterface;
 use Symfony\Component\Messenger\Worker;
 use Symfony\Contracts\Service\ResetInterface;
+use Throwable;
 
 /**
  * One request or command per test: a second kernel->handle() runs services_resetter, which
@@ -54,8 +58,12 @@ final class KernelProfilingTest extends TestCase
 {
     private TestKernel $kernel;
 
+    /** @var (callable(Throwable): void)|null */
+    private $exceptionHandler;
+
     protected function setUp(): void
     {
+        $this->exceptionHandler = $this->currentExceptionHandler();
         new Filesystem()->remove(TestKernel::cacheRoot());
         $this->kernel = new TestKernel('test', false);
         $this->kernel->boot();
@@ -65,6 +73,22 @@ final class KernelProfilingTest extends TestCase
     {
         $this->kernel->shutdown();
         new Filesystem()->remove(TestKernel::cacheRoot());
+        // symfony/error-handler < 6.4.44 leaves the exception handler FrameworkBundle::boot() pushes
+        // on top of PHPUnit's; failOnRisky turns that into a failure on the lowest dependencies.
+        for ($i = 0; $i < 8 && $this->currentExceptionHandler() !== $this->exceptionHandler; $i++) {
+            restore_exception_handler();
+        }
+    }
+
+    /**
+     * @return (callable(Throwable): void)|null
+     */
+    private function currentExceptionHandler(): ?callable
+    {
+        $handler = set_exception_handler(null);
+        restore_exception_handler();
+
+        return $handler;
     }
 
     #[RequiresMethod(MonologBundle::class, 'build')]
@@ -152,6 +176,20 @@ final class KernelProfilingTest extends TestCase
         self::assertGreaterThan($reset[1], $this->listenerPriority(WorkerRunningEvent::class, 'onWorkerRunning'));
     }
 
+    #[RequiresMethod(Worker::class, 'run')]
+    public function testAConsumeCommandSpanCoversTheWholeRunDespiteResetsAfterEachMessage(): void
+    {
+        $bus = $this->testContainer()->get('test.message_bus');
+        self::assertInstanceOf(MessageBusInterface::class, $bus);
+        $bus->dispatch(new ProfiledMessage());
+
+        $this->runCommand('messenger:consume', ['receivers' => ['memory'], '--limit' => 1]);
+
+        $recorder = $this->recorder();
+        self::assertSame(['message ' . ProfiledMessage::class, 'cli command messenger:consume'], $recorder->messages());
+        self::assertSame([], $recorder->ended[1][1], 'ended by console.terminate, not by kernel.reset');
+    }
+
     public function testApplicationDecisionMakersAreAskedBeforeTheListBasedOne(): void
     {
         $assembler = $this->testContainer()->get(SpanAssembler::class);
@@ -173,8 +211,8 @@ final class KernelProfilingTest extends TestCase
         $container = $this->kernel->getContainer();
 
         self::assertSame(['ping', '\\kept'], $container->getParameter('msstc4symfony_profiling.routes.whitelist'));
-        self::assertSame(['test:ping'], $container->getParameter('msstc4symfony_profiling.commands.whitelist'));
-        self::assertSame(['App\\Message\\Import'], $container->getParameter('msstc4symfony_profiling.messages.whitelist'));
+        self::assertSame(['test:ping', 'messenger:consume'], $container->getParameter('msstc4symfony_profiling.commands.whitelist'));
+        self::assertSame(['App\\Message\\Import', ProfiledMessage::class], $container->getParameter('msstc4symfony_profiling.messages.whitelist'));
         self::assertNull($container->getParameter('msstc4symfony_profiling.spans.whitelist'));
         self::assertSame(['sql '], $container->getParameter('msstc4symfony_profiling.spans.blacklist'));
     }
@@ -246,11 +284,22 @@ final class KernelProfilingTest extends TestCase
         $this->kernel->terminate($request, $response);
     }
 
-    private function runCommand(string $name): void
+    /**
+     * @param array<string, mixed> $arguments
+     */
+    private function runCommand(string $name, array $arguments = []): void
     {
         $application = new Application($this->kernel);
         $application->setAutoExit(false);
-        $application->run(new ArrayInput(['command' => $name]), new NullOutput());
+        $application->run(new ArrayInput(['command' => $name] + $arguments), new NullOutput());
+    }
+
+    private function recorder(): RecordingEndProcessor
+    {
+        $recorder = $this->kernel->getContainer()->get('test.recorder');
+        self::assertInstanceOf(RecordingEndProcessor::class, $recorder);
+
+        return $recorder;
     }
 
     /**

@@ -13,7 +13,7 @@ PHP >= 8.4, Symfony 6.4 / 7.x / 8.x. Library code only.
 
 Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 
-- `make check` — `php -l`, PHPStan level 9, PHP-CS-Fixer, `composer validate --strict`,
+- `make check` — `php -l`, PHPStan level 10, PHP-CS-Fixer, `composer validate --strict`,
   `composer audit`, Rector dry-run, deptrac. Run as `COMPOSER=composer-ci.json make check`.
 - `make test` — unit + integration suites; `make infection`, `make fix`, `make regenerate-baseline`.
 
@@ -24,7 +24,8 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
   close innermost first), then a non-reentrant queue runs end processors (try/catch) for
   recorded spans only. `AbstractSpan::end()` is idempotent.
 - `EventListener\{Request,Console,Message}EventListener` open spans for configured
-  routes/commands/messages; terminate listeners call `endAll()` at the very end.
+  routes/commands/messages; terminate listeners call `endAll()` at the very end. `reset()`
+  (kernel.reset) ends open spans except a command span marked by `keepOpenOnReset()`.
 - `ProfilingBundle` defines the `msstc4symfony_profiling` config tree.
 - `Resources/config/services.php` autoloads the whole namespace; extension points are
   autoconfigured by interface. Rector's `FromServicePublicToDefaultsPublicRector` and
