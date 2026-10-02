@@ -134,6 +134,21 @@ final class ProfilingFactoryTest extends TestCase
         self::assertSame([], $this->recorder->messages());
     }
 
+    public function testResetIgnoresAMarkedSpanThatAlreadyEndedWithoutTheFactory(): void
+    {
+        $factory = $this->factory();
+        $root = $factory->createSpan('root');
+        $worker = $factory->createSpan('worker');
+        $factory->keepOpenOnReset($worker);
+        $worker->removeEndHandler(0);
+        $worker->end();
+
+        $factory->reset();
+
+        self::assertTrue($root->isEnded());
+        self::assertSame(['root'], $this->recorder->messages());
+    }
+
     public function testEndAllStillEndsASpanMarkedToOutliveResets(): void
     {
         $factory = $this->factory();

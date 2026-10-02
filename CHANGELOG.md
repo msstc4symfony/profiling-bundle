@@ -1,15 +1,28 @@
 # Changelog
 
+## 1.1.1
+
+- New `Framework\SpanKeeperInterface` (`keepOpenOnReset()`), implemented by `ProfilingFactory`:
+  `ConsoleEventListener` now marks the command span through it, so an application decorator of
+  the factory that implements it keeps `messenger:consume` measured across `kernel.reset`
+  (1.1.0 checked the concrete `ProfilingFactory` class).
+- `ProfilingFactory::reset()` no longer stops at a marked span that already ended without the
+  factory (end handler removed): it is dropped and the spans below it end as usual.
+
 ## 1.1.0
 
 - A command listed in `commands` keeps its span across `kernel.reset`: `messenger:consume`
   (which resets services after every message) is now measured until `console.terminate`
-  instead of until the first message. Spans opened above it still end on reset.
+  instead of until the first message. Spans opened above it still end on reset. Every message
+  span of such a run is now a child of the command span (in 1.0.0 only the first one was), which
+  `getParentSpan()`-based processors see.
 - New `ProfilingFactory::keepOpenOnReset(SpanInterface)`: `reset()` leaves a marked span and
   the spans below it open; `endAll()` still ends them. `ConsoleEventListener::reset()` no
   longer forgets the command span.
 - `symfony/service-contracts` (`^2.5|^3`) is declared in `require`; it was only pulled in
   transitively.
+- `suggest`: `msstc4symfony/metrics-bundle` replaced by `msstc4symfony/metrics-bridge-profiling`
+  for the Prometheus export.
 - Tooling: bundle-standard v1.8.0 (blocking BC check and Infection with minimum MSI 82, a
   `--prefer-lowest` PHPUnit cell), PHPStan level 10.
 

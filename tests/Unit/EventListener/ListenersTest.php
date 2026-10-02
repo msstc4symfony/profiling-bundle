@@ -7,10 +7,14 @@ namespace Msstc4Symfony\ProfilingBundle\Test\Unit\EventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
 use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
 use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
+use Msstc4Symfony\ProfilingBundle\Framework\NullProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\AbstractSpan;
+use Msstc4Symfony\ProfilingBundle\Framework\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\Span;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\DecoratingFactory;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingFactory;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\ThrowingEndHandlerProcessor;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\UsesClass;
@@ -29,6 +33,8 @@ use Symfony\Component\HttpKernel\HttpKernelInterface;
 #[UsesClass(SpanAssembler::class)]
 #[UsesClass(AbstractSpan::class)]
 #[UsesClass(Span::class)]
+#[UsesClass(NullSpan::class)]
+#[UsesClass(NullProfilingFactory::class)]
 final class ListenersTest extends TestCase
 {
     private RecordingEndProcessor $recorder;
@@ -133,6 +139,36 @@ final class ListenersTest extends TestCase
 
         self::assertSame(['message', 'cli command messenger:consume'], $this->recorder->messages());
         self::assertSame([], $this->recorder->ended[1][1]);
+    }
+
+    public function testACommandSpanOutlivesResetsBehindADecoratedFactory(): void
+    {
+        $console = new ConsoleEventListener(new DecoratingFactory($this->factory), ['messenger:consume']);
+        $console->onCommand(new ConsoleCommandEvent(new Command('messenger:consume'), new ArrayInput([]), new NullOutput()));
+
+        $this->factory->reset();
+
+        self::assertSame([], $this->recorder->messages());
+
+        $console->onTerminate();
+
+        self::assertSame(['cli command messenger:consume'], $this->recorder->messages());
+    }
+
+    public function testACommandIsProfiledByAFactoryThatCannotKeepSpansOpenOnReset(): void
+    {
+        $factory = new RecordingFactory();
+        $console = new ConsoleEventListener($factory, ['app:import']);
+
+        $console->onCommand(new ConsoleCommandEvent(new Command('app:import'), new ArrayInput([]), new NullOutput()));
+        $console->reset();
+        $console->onTerminate();
+        $console->onTerminateEnd();
+
+        self::assertCount(1, $factory->endedSpans);
+        self::assertSame('cli command app:import', $factory->endedSpans[0]->getMessage());
+        self::assertTrue($factory->endedSpans[0]->isEnded());
+        self::assertSame(1, $factory->endAllCalls);
     }
 
     public function testThrowingEndHandlersNeverEscapeTheListeners(): void

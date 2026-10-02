@@ -86,7 +86,9 @@ a `#[Required]` setter and falls back to a no-op factory outside the container.
   never passed to end processors.
 - Open spans are ended on `kernel.terminate` / `console.terminate` and on `kernel.reset`; a
   running command's span (`commands`) and the spans below it survive `kernel.reset`
-  (`ProfilingFactory::keepOpenOnReset()`).
+  (`SpanKeeperInterface::keepOpenOnReset()`, implemented by `ProfilingFactory`). If you
+  decorate `ProfilingFactoryInterface`, implement `SpanKeeperInterface` on the decorator too,
+  or the command span ends on the first `kernel.reset`.
 - A failing assembler, decision maker, create or end processor never breaks the profiled
   code: the exception is logged on the default `logger` and profiling carries on. An
   exception from your own end handler reaches the code that called `end()` on that span

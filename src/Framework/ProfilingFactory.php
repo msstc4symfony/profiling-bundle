@@ -25,7 +25,7 @@ use WeakMap;
  * cannot reorder or repeat the work. Failures of assemblers, processors and implicitly run
  * end handlers are logged, never thrown into the profiled code.
  */
-final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterface
+final class ProfilingFactory implements ProfilingFactoryInterface, SpanKeeperInterface, ResetInterface
 {
     /** @var list<SpanInterface> */
     private array $activeSpans = [];
@@ -36,7 +36,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
     private bool $processing = false;
 
     /** @var WeakMap<SpanInterface, true> */
-    private WeakMap $keptOpenOnReset;
+    private readonly WeakMap $keptOpenOnReset;
 
     /**
      * @param iterable<SpanAssemblerInterface> $spanAssemblers
@@ -102,11 +102,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         $this->endOpenSpans(keepMarked: false);
     }
 
-    /**
-     * Lets an open span, and therefore the spans below it, survive reset(): for spans covering
-     * many units of work, such as a worker command, whose kernel.reset runs after every message.
-     * Spans opened above it still end on reset(); endAll() ends it too.
-     */
+    #[Override]
     public function keepOpenOnReset(SpanInterface $span): void
     {
         $this->keptOpenOnReset[$span] = true;
@@ -125,7 +121,7 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
     {
         while ($this->activeSpans !== []) {
             $top = $this->activeSpans[array_key_last($this->activeSpans)];
-            if ($keepMarked && ($this->keptOpenOnReset[$top] ?? false)) {
+            if ($keepMarked && !$top->isEnded() && isset($this->keptOpenOnReset[$top])) {
                 return;
             }
 

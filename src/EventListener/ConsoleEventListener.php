@@ -4,9 +4,9 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\EventListener;
 
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
 use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
 use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Framework\SpanKeeperInterface;
 use Override;
 use Symfony\Component\Console\ConsoleEvents;
 use Symfony\Component\Console\Event\ConsoleCommandEvent;
@@ -39,7 +39,7 @@ final class ConsoleEventListener implements ResetInterface
         }
 
         $this->span = $this->profilingFactory->createSpan('cli command ' . $command);
-        if ($this->profilingFactory instanceof ProfilingFactory) {
+        if ($this->profilingFactory instanceof SpanKeeperInterface) {
             $this->profilingFactory->keepOpenOnReset($this->span);
         }
     }

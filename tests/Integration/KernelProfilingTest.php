@@ -51,11 +51,14 @@ use Throwable;
  * also clears the monolog TestHandler.
  *
  * symfony/monolog-bundle and symfony/messenger are optional (composer-ci.json only): without
- * them the kernel still boots and the tests needing them are skipped.
+ * them the kernel still boots and the tests needing them are skipped. PHPUnit has no
+ * "requires class" attribute: #[RequiresMethod] on a method of the class stands in for it.
  */
 #[CoversNothing]
 final class KernelProfilingTest extends TestCase
 {
+    private const int MAX_HANDLER_UNWIND = 8;
+
     private TestKernel $kernel;
 
     /** @var (callable(Throwable): void)|null */
@@ -75,7 +78,7 @@ final class KernelProfilingTest extends TestCase
         new Filesystem()->remove(TestKernel::cacheRoot());
         // symfony/error-handler < 6.4.44 leaves the exception handler FrameworkBundle::boot() pushes
         // on top of PHPUnit's; failOnRisky turns that into a failure on the lowest dependencies.
-        for ($i = 0; $i < 8 && $this->currentExceptionHandler() !== $this->exceptionHandler; $i++) {
+        for ($i = 0; $i < self::MAX_HANDLER_UNWIND && $this->currentExceptionHandler() !== $this->exceptionHandler; $i++) {
             restore_exception_handler();
         }
     }
@@ -285,7 +288,7 @@ final class KernelProfilingTest extends TestCase
     }
 
     /**
-     * @param array<string, mixed> $arguments
+     * @param array<string, string|int|list<string>> $arguments
      */
     private function runCommand(string $name, array $arguments = []): void
     {

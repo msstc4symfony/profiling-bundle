@@ -23,9 +23,12 @@
 - До 1.1.0: команды-воркеры в `commands` (`messenger:consume`) — `kernel.reset` после первого
   сообщения закрывал span команды (`ProfilingFactory::reset()` = `endAll()`, а
   `ConsoleEventListener::reset()` забывал span). С 1.1.0 span команды помечается
-  `keepOpenOnReset()`, `ConsoleEventListener::reset()` ничего не делает. Метод есть только у
-  `ProfilingFactory` (добавить в `ProfilingFactoryInterface` — BC break): если приложение
-  декорирует фабрику, listener не может пометить span и поведение прежнее.
+  `keepOpenOnReset()`, `ConsoleEventListener::reset()` ничего не делает. С 1.1.1 метод — в
+  отдельном `Framework\SpanKeeperInterface` (в `ProfilingFactoryInterface` нельзя — BC break):
+  listener проверяет `instanceof SpanKeeperInterface`. Декоратор фабрики, который его не
+  реализует, получает поведение 1.0.0 (span команды закрывается на первом `kernel.reset`).
+- 1.1.1: `reset()` пропускает помеченный span, если он уже закрыт без фабрики (снят её end
+  handler) — иначе «мёртвая» метка навсегда держала открытыми span под ней.
 - Ревью 2 (2026-10-01 UTC): один span в `MessageEventListener` путал исходы батчей
   (Received A, Received B, Failed A приписывалось B) — теперь span закрывается только событием
   своего сообщения, незакрытый — на следующем Received с `message_acknowledged: false`; listener на
@@ -63,7 +66,7 @@
 - `final`: все конкретные классы `src/` уже `final`; `AbstractSpan` — точка расширения. На 2.0:
   `AbstractSpan::endAt()`/`getEndedAt()` (`@internal`, но public и не final — Roave считает
   final/сужение видимости BC break), `protected` свойства `AbstractSpan` → `private`,
-  `keepOpenOnReset()` → в `ProfilingFactoryInterface`, убрать no-op `ConsoleEventListener::reset()`
+  `keepOpenOnReset()` → в `ProfilingFactoryInterface` (вместо `SpanKeeperInterface`), убрать no-op `ConsoleEventListener::reset()`
   вместе с `ResetInterface`.
 - Повторный `end()` у span безвреден: его уже нет в стеке, процессоры второй раз не идут.
 - В тестах ядра второй `handle()` сбрасывает `TestHandler` (см. `testing.md`).
@@ -73,3 +76,13 @@
   несуществующим классом события просто регистрирует listener на строковое имя). Guard лишь
   не держит в контейнере listener, чьи события никогда не придут. Проверено вручную в
   минимальной установке (2026-10-01 UTC).
+
+- Ревью v1.0.0..v1.1.0 (2026-10-02 UTC), отклонено:
+  - «`symfony/service-contracts: ^2.5|^3` — ветка `^2.5` недостижима»: неверно.
+    `symfony/dependency-injection` 6.4.0 требует `^2.5|^3.0`; `--prefer-lowest` на PHP 8.4 +
+    Symfony 6.4.* ставит `service-contracts` 2.5.0, тесты зелёные. Сужение до `^3` не нужно.
+  - Пустой `ConsoleEventListener::reset()` с `ResetInterface` — оставлен до 2.0 (убрать
+    интерфейс у класса — BC break), см. список на 2.0 выше.
+  - `#[RequiresMethod(MonologBundle::class, 'build')]` / `(Worker::class, 'run')` оставлены:
+    в PHPUnit нет атрибута «нужен класс», атрибут декларативен и срабатывает до `setUp()`;
+    пояснение — в docblock `KernelProfilingTest`.
