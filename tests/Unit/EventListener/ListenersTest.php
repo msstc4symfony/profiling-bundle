@@ -78,6 +78,16 @@ final class ListenersTest extends TestCase
         self::assertSame(['cli command app:import'], $this->recorder->messages());
     }
 
+    public function testCommandTerminateClosesSpansLeftOpenByTheCommand(): void
+    {
+        $listener = new ConsoleEventListener($this->factory, []);
+        $this->factory->createSpan('left open by the command');
+
+        $listener->onTerminateEnd();
+
+        self::assertSame(['left open by the command'], $this->recorder->messages());
+    }
+
     public function testCommandWithoutANameIsProfiledAsUnknown(): void
     {
         $listener = new ConsoleEventListener($this->factory, ['unknown']);
