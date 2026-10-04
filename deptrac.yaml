@@ -1,0 +1,33 @@
+deptrac:
+    paths:
+        - ./src
+
+    exclude_files:
+        - '#.*test.*#i'
+
+    layers:
+        - name: Framework
+          collectors:
+              - type: directory
+                value: src/Framework/.*
+
+        - name: EventListener
+          collectors:
+              - type: directory
+                value: src/EventListener/.*
+
+        - name: BundleRoot
+          collectors:
+              - type: classLike
+                value: Msstc4Symfony\\ProfilingBundle\\ProfilingBundle
+
+    # Status quo of phase A (spec 6.2): records the current layering and blocks new directions.
+    ruleset:
+        # Spans, the factory, assemblers, decision makers and processors.
+        Framework: ~
+
+        # Request/console listeners open and close spans through the factory.
+        EventListener:
+            - Framework
+
+        BundleRoot: ~

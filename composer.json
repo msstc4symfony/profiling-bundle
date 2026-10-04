@@ -1,0 +1,74 @@
+{
+  "name": "msstc4symfony/profiling-bundle",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Maxim Shamaev",
+      "email": "maxim.shamaev@gmail.com"
+    }
+  ],
+  "type": "symfony-bundle",
+  "description": "Lightweight span profiling for Symfony: nested timings for requests, commands and code blocks",
+  "minimum-stability": "stable",
+  "keywords": [
+    "php",
+    "symfony",
+    "profiling"
+  ],
+  "prefer-stable": true,
+  "autoload": {
+    "psr-4": {
+      "Msstc4Symfony\\ProfilingBundle\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Msstc4Symfony\\ProfilingBundle\\Test\\": "tests/"
+    }
+  },
+  "require": {
+    "php": ">=8.4",
+    "composer-runtime-api": ">=2.2",
+    "monolog/monolog": "^3.5",
+    "psr/log": "^2.0|^3.0",
+    "symfony/config": "^7.4|^8.0",
+    "symfony/console": "^7.4|^8.0",
+    "symfony/dependency-injection": "^7.4|^8.0",
+    "symfony/event-dispatcher": "^7.4|^8.0",
+    "symfony/framework-bundle": "^7.4|^8.0",
+    "symfony/http-foundation": "^7.4|^8.0",
+    "symfony/http-kernel": "^7.4|^8.0",
+    "symfony/service-contracts": "^3"
+  },
+  "require-dev": {
+    "friendsofphp/php-cs-fixer": "^3.55",
+    "phpstan/extension-installer": "^1.4",
+    "phpstan/phpstan": "^2.1",
+    "phpstan/phpstan-strict-rules": "^2.0",
+    "phpstan/phpstan-symfony": "^2.0",
+    "phpunit/phpunit": ">=11.0",
+    "rector/rector": "^2.1",
+    "roave/security-advisories": "dev-latest"
+  },
+  "suggest": {
+    "msstc4symfony/metrics-bridge-profiling": "To export span durations as Prometheus metrics",
+    "symfony/messenger": "To profile consumed messages (messages option)",
+    "symfony/monolog-bundle": "To write finished spans to the \"profiling\" log channel"
+  },
+  "config": {
+    "allow-plugins": {
+      "phpstan/extension-installer": true
+    },
+    "sort-packages": true
+  },
+  "conflict": {
+    "symfony/monolog-bundle": "<3.10",
+    "symfony/symfony": "*"
+  },
+  "extra": {
+    "symfony": {
+      "allow-contrib": false,
+      "require": "^7.4|^8.0"
+    }
+  }
+}
