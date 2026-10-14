@@ -28,7 +28,7 @@ final class NullFactoryAndOwnerTest extends TestCase
 {
     public function testOwnerFallsBackToTheNullFactory(): void
     {
-        $factory = new FactoryOwner()->factory();
+        $factory = (new FactoryOwner())->factory();
 
         self::assertInstanceOf(NullProfilingFactory::class, $factory);
         self::assertFalse($factory->createSpan('x')->isRecorded());
@@ -37,11 +37,11 @@ final class NullFactoryAndOwnerTest extends TestCase
 
     public function testNullFactoryEndSpanNeverThrows(): void
     {
-        $span = new Span('x')->addEndHandler(static function (): never {
+        $span = (new Span('x'))->addEndHandler(static function (): never {
             throw new RuntimeException('handler bug');
         });
 
-        new NullProfilingFactory()->endSpan($span);
+        (new NullProfilingFactory())->endSpan($span);
 
         self::assertTrue($span->isEnded());
     }
@@ -50,7 +50,7 @@ final class NullFactoryAndOwnerTest extends TestCase
     {
         $span = new Span('x');
 
-        new NullProfilingFactory()->keepOpenOnReset($span);
+        (new NullProfilingFactory())->keepOpenOnReset($span);
 
         self::assertFalse($span->isEnded());
         self::assertSame('x', $span->getMessage());
@@ -60,6 +60,6 @@ final class NullFactoryAndOwnerTest extends TestCase
     {
         $factory = new ProfilingFactory([], [], [], new NullLogger());
 
-        self::assertSame($factory, new FactoryOwner()->setProfilingFactory($factory)->factory());
+        self::assertSame($factory, (new FactoryOwner())->setProfilingFactory($factory)->factory());
     }
 }

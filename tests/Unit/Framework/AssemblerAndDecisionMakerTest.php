@@ -30,7 +30,7 @@ final class AssemblerAndDecisionMakerTest extends TestCase
 
         self::assertTrue($maker->isAllowed('request health'));
         self::assertFalse($maker->isAllowed('cli command x'));
-        self::assertFalse(new ListBasedDecisionMaker([], null)->isAllowed('request health'));
+        self::assertFalse((new ListBasedDecisionMaker([], null))->isAllowed('request health'));
     }
 
     public function testBlacklistAloneRejectsPrefixes(): void
@@ -43,8 +43,8 @@ final class AssemblerAndDecisionMakerTest extends TestCase
 
     public function testWithoutListsItAbstainsAfterApplicationMakers(): void
     {
-        self::assertNull(new ListBasedDecisionMaker(null, null)->isAllowed('anything'));
-        $tagged = new ReflectionClass(ListBasedDecisionMaker::class)->getAttributes(AsTaggedItem::class)[0] ?? null;
+        self::assertNull((new ListBasedDecisionMaker(null, null))->isAllowed('anything'));
+        $tagged = (new ReflectionClass(ListBasedDecisionMaker::class))->getAttributes(AsTaggedItem::class)[0] ?? null;
         self::assertNotNull($tagged);
         self::assertLessThan(0, $tagged->newInstance()->priority);
     }
@@ -62,6 +62,6 @@ final class AssemblerAndDecisionMakerTest extends TestCase
 
         self::assertInstanceOf(NullSpan::class, $assembler->assemble('x', []));
         self::assertInstanceOf(Span::class, $assembler->assemble('y', []));
-        self::assertInstanceOf(Span::class, new SpanAssembler([$abstain])->assemble('x', []));
+        self::assertInstanceOf(Span::class, (new SpanAssembler([$abstain]))->assemble('x', []));
     }
 }

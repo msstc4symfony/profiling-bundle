@@ -22,10 +22,10 @@ final class LoggerProcessorTest extends TestCase
     {
         $handler = new TestHandler();
         $parent = new Span('request /orders');
-        $span = new Span('sql', ['table' => 'orders'])->setParentSpan($parent);
+        $span = (new Span('sql', ['table' => 'orders']))->setParentSpan($parent);
 
         $span->end();
-        new LoggerProcessor(new Logger('profiling', [$handler]))->process($span, ['rows' => 2]);
+        (new LoggerProcessor(new Logger('profiling', [$handler])))->process($span, ['rows' => 2]);
 
         $record = $handler->getRecords()[0];
         self::assertSame('request /orders > sql', $record->message);

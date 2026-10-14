@@ -60,7 +60,7 @@ use Throwable;
 #[CoversNothing]
 final class KernelProfilingTest extends TestCase
 {
-    private const int MAX_HANDLER_UNWIND = 8;
+    private const MAX_HANDLER_UNWIND = 8;
 
     private TestKernel $kernel;
 
@@ -70,7 +70,7 @@ final class KernelProfilingTest extends TestCase
     protected function setUp(): void
     {
         $this->exceptionHandler = $this->currentExceptionHandler();
-        new Filesystem()->remove(TestKernel::cacheRoot());
+        (new Filesystem())->remove(TestKernel::cacheRoot());
         $this->kernel = new TestKernel('test', false);
         $this->kernel->boot();
     }
@@ -78,7 +78,7 @@ final class KernelProfilingTest extends TestCase
     protected function tearDown(): void
     {
         $this->kernel->shutdown();
-        new Filesystem()->remove(TestKernel::cacheRoot());
+        (new Filesystem())->remove(TestKernel::cacheRoot());
         // The lowest Symfony 7.4 leaves the exception handler FrameworkBundle::boot() pushes on top of
         // PHPUnit's; failOnRisky turns that into a failure on the lowest dependencies.
         for ($i = 0; $i < self::MAX_HANDLER_UNWIND && $this->currentExceptionHandler() !== $this->exceptionHandler; $i++) {
@@ -200,7 +200,7 @@ final class KernelProfilingTest extends TestCase
     {
         $assembler = $this->testContainer()->get(SpanAssembler::class);
         self::assertInstanceOf(SpanAssembler::class, $assembler);
-        $makers = new ReflectionProperty($assembler, 'allowSpanDecisionMakers')->getValue($assembler);
+        $makers = (new ReflectionProperty($assembler, 'allowSpanDecisionMakers'))->getValue($assembler);
         self::assertIsIterable($makers);
 
         $classes = [];
@@ -283,11 +283,11 @@ final class KernelProfilingTest extends TestCase
      */
     private function processConfig(array $config): void
     {
-        $extension = new ProfilingBundle()->getContainerExtension();
+        $extension = (new ProfilingBundle())->getContainerExtension();
         self::assertInstanceOf(ConfigurationExtensionInterface::class, $extension);
         $configuration = $extension->getConfiguration([], new ContainerBuilder());
         self::assertNotNull($configuration);
-        new Processor()->processConfiguration($configuration, [$config]);
+        (new Processor())->processConfiguration($configuration, [$config]);
     }
 
     private function listenerPriority(string $event, string $method): ?int

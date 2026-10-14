@@ -65,3 +65,13 @@
   - `#[RequiresMethod(MonologBundle::class, 'build')]` / `(Worker::class, 'run')` оставлены:
     в PHPUnit нет атрибута «нужен класс», атрибут декларативен и срабатывает до `setUp()`;
     пояснение — в docblock `KernelProfilingTest`.
+- **Код должен разбираться на PHP 8.2** (с 2026-10-14 UTC, bundle-standard v2.0.0, профиль `php82`): без
+  типизированных констант (`const string X`), без анонимных `new readonly class {}` (оба — 8.3;
+  именованный `readonly class` — 8.2, можно) и без `new X()->m()` / `new X()(...)` (8.4) — только
+  `(new X())->m()`. PHPStan (`phpVersion.min: 80200`) ловит типизированные
+  константы; остальное ловят только `php -l` в job «minimal» (PHP 8.2) и ячейки PHPUnit на 8.2. Шаблоны Rector
+  (`withPhpVersion(PHP_82)`) и CS-Fixer (`new_expression_parentheses`) синтаксис обратно не поднимают.
+  `#[Override]` (8.3) допустим: на 8.2 атрибут не инстанцируется. `array_any/all/find` (8.4) — только с
+  `symfony/polyfill-php84` в `require`. Symfony 8 ставится только на PHP 8.4+.
+  `composer-ci.lock` собран на PHP 8.4 (Symfony 8): на 8.2/8.3 локально — `COMPOSER=composer-ci.json composer update`
+  (или `--prefer-lowest`, как ячейка CI), не `install`.

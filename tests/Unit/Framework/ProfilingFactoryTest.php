@@ -402,8 +402,8 @@ final class ProfilingFactoryTest extends TestCase
         };
         $log = new TestHandler();
 
-        $unassembled = new ProfilingFactory([$throwingAssembler], [], [], new Logger('app', [$log]))->createSpan('x');
-        $unprocessed = new ProfilingFactory([new SpanAssembler([])], [$throwingProcessor], [], new Logger('app', [$log]))->createSpan('y');
+        $unassembled = (new ProfilingFactory([$throwingAssembler], [], [], new Logger('app', [$log])))->createSpan('x');
+        $unprocessed = (new ProfilingFactory([new SpanAssembler([])], [$throwingProcessor], [], new Logger('app', [$log])))->createSpan('y');
 
         self::assertInstanceOf(NullSpan::class, $unassembled);
         self::assertInstanceOf(Span::class, $unprocessed);
@@ -480,14 +480,14 @@ final class ProfilingFactoryTest extends TestCase
 
     public function testKeepOpenOnResetIsPartOfTheFactoryContract(): void
     {
-        self::assertTrue(new ReflectionClass(ProfilingFactoryInterface::class)->hasMethod('keepOpenOnReset'));
+        self::assertTrue((new ReflectionClass(ProfilingFactoryInterface::class))->hasMethod('keepOpenOnReset'));
         self::assertFalse(interface_exists('Msstc4Symfony\\ProfilingBundle\\Framework\\SpanKeeperInterface'));
     }
 
     public function testDependenciesAreRequiredConstructorArguments(): void
     {
         foreach ([ProfilingFactory::class, SpanAssembler::class] as $class) {
-            $constructor = new ReflectionClass($class)->getConstructor();
+            $constructor = (new ReflectionClass($class))->getConstructor();
             self::assertInstanceOf(ReflectionMethod::class, $constructor);
             foreach ($constructor->getParameters() as $parameter) {
                 self::assertFalse($parameter->isOptional(), $class . '::$' . $parameter->getName());

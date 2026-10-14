@@ -21,7 +21,7 @@ final class SpanTest extends TestCase
     public function testEndRunsHandlersOnceWithTheContext(): void
     {
         $calls = [];
-        $span = new Span('db', ['table' => 'users'])->addEndHandler(static function (SpanInterface $span, array $context) use (&$calls): void {
+        $span = (new Span('db', ['table' => 'users']))->addEndHandler(static function (SpanInterface $span, array $context) use (&$calls): void {
             $calls[] = [$span->getMessage(), $context];
         });
 
@@ -51,7 +51,7 @@ final class SpanTest extends TestCase
     {
         $first = static function (): void {};
         $second = static function (): void {};
-        $span = new Span('x')->addEndHandler($first)->addEndHandler($second);
+        $span = (new Span('x'))->addEndHandler($first)->addEndHandler($second);
 
         $span->removeEndHandler($first);
         self::assertSame([$second], $span->getEndHandlers());
@@ -65,27 +65,27 @@ final class SpanTest extends TestCase
 
     public function testEndCannotBeOverridden(): void
     {
-        self::assertTrue(new ReflectionMethod(AbstractSpan::class, 'end')->isFinal());
+        self::assertTrue((new ReflectionMethod(AbstractSpan::class, 'end'))->isFinal());
     }
 
     public function testOnlyRealSpansAreRecorded(): void
     {
         $before = microtime(true);
 
-        self::assertTrue(new Span('a')->isRecorded());
-        self::assertFalse(new NullSpan('b')->isRecorded());
-        self::assertGreaterThanOrEqual($before, new NullSpan('c')->getStartTime());
+        self::assertTrue((new Span('a'))->isRecorded());
+        self::assertFalse((new NullSpan('b'))->isRecorded());
+        self::assertGreaterThanOrEqual($before, (new NullSpan('c'))->getStartTime());
     }
 
     public function testEndAtAndGetEndedAtAreFinal(): void
     {
-        self::assertTrue(new ReflectionMethod(AbstractSpan::class, 'endAt')->isFinal());
-        self::assertTrue(new ReflectionMethod(AbstractSpan::class, 'getEndedAt')->isFinal());
+        self::assertTrue((new ReflectionMethod(AbstractSpan::class, 'endAt'))->isFinal());
+        self::assertTrue((new ReflectionMethod(AbstractSpan::class, 'getEndedAt'))->isFinal());
     }
 
     public function testSubclassesCannotTouchTheSpanState(): void
     {
-        foreach (new ReflectionClass(AbstractSpan::class)->getProperties() as $property) {
+        foreach ((new ReflectionClass(AbstractSpan::class))->getProperties() as $property) {
             self::assertTrue($property->isPrivate(), '$' . $property->getName());
         }
     }

@@ -31,7 +31,7 @@ use Symfony\Contracts\Service\ResetInterface;
 #[AsEventListener(event: WorkerRunningEvent::class, method: 'onWorkerRunning')]
 final class MessageEventListener implements ResetInterface
 {
-    public const array NOT_ACKNOWLEDGED = ['message_acknowledged' => false];
+    public const NOT_ACKNOWLEDGED = ['message_acknowledged' => false];
 
     private ?object $message = null;
 

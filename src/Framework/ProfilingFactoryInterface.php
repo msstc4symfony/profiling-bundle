@@ -11,8 +11,10 @@ interface ProfilingFactoryInterface
     /**
      * End context of spans closed by the factory (a parent ending, endAll(), kernel.reset)
      * rather than by their own end().
+     *
+     * @var array{profiling_implicit_end: true}
      */
-    public const array IMPLICIT_END = ['profiling_implicit_end' => true];
+    public const IMPLICIT_END = ['profiling_implicit_end' => true];
 
     /**
      * @param array<string, mixed> $context

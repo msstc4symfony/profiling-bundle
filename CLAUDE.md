@@ -7,7 +7,7 @@ Guidance for Claude Code in this repository. Deep references live under `.claude
 Symfony bundle (`msstc4symfony/profiling-bundle`, namespace `Msstc4Symfony\ProfilingBundle`)
 with nested timing spans for HTTP requests, console commands and custom code; finished spans
 go to end processors (Monolog `profiling` channel built in, Prometheus via `msstc4symfony/metrics-bridge-profiling`).
-PHP >= 8.4, Symfony 7.4 / 8.x. Library code only.
+PHP >= 8.2, Symfony 7.4 / 8.x. Library code only.
 
 ## Common commands
 

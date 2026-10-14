@@ -172,7 +172,7 @@ final class ListenersTest extends TestCase
 
     public function testTheConsoleListenerHoldsNoStateKernelResetCouldClear(): void
     {
-        self::assertFalse(new ReflectionClass(ConsoleEventListener::class)->implementsInterface(ResetInterface::class));
+        self::assertFalse((new ReflectionClass(ConsoleEventListener::class))->implementsInterface(ResetInterface::class));
     }
 
     public function testThrowingEndHandlersNeverEscapeTheListeners(): void

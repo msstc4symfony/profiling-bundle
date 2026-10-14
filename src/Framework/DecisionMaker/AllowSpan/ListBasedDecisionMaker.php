@@ -15,7 +15,7 @@ use Symfony\Component\DependencyInjection\Attribute\Autowire;
 #[AsTaggedItem(priority: self::PRIORITY)]
 final readonly class ListBasedDecisionMaker implements AllowSpanDecisionMakerInterface
 {
-    public const int PRIORITY = -1024;
+    public const PRIORITY = -1024;
 
     /**
      * @param list<string>|null $spansWhitelist
