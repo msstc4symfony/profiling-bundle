@@ -5,8 +5,8 @@ declare(strict_types=1);
 namespace Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture;
 
 use Closure;
-use Msstc4Symfony\ProfilingBundle\Framework\Processor\EndSpan\EndSpanProcessorInterface;
-use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Application\Processor\EndSpan\EndSpanProcessorInterface;
+use Msstc4Symfony\ProfilingBundle\Application\Span\SpanInterface;
 use Override;
 
 final class RecordingEndProcessor implements EndSpanProcessorInterface

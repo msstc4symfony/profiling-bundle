@@ -8,4 +8,6 @@
 - PHPStan level 10 на `src/` и `tests/`, baseline пуст — держать пустым.
 - Rector: пропущены `FromServicePublicToDefaultsPublicRector` и
   `ServiceSettersToSettersAutodiscoveryRector` — переписывают `services.php`.
-- deptrac: `Framework` ни от чего; `EventListener` → `Framework`; корень бандла — от всех.
+- deptrac: шаблон bundle-standard v3, BundleRoot `^Msstc4Symfony\\ProfilingBundle\\ProfilingBundle$`;
+  `Application` ни от чего; `Presentation` → `Application`; корень бандла — ни от чего.
+- PHPStan: `checkMissingOverrideMethodAttribute` из шаблона — `#[Override]` на всех переопределениях.

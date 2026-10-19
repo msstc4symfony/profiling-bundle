@@ -19,11 +19,11 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 
 ## Architecture in 60 seconds
 
-- `Framework\ProfilingFactory` keeps the stack of open spans (`ResetInterface`).
+- `Application\ProfilingFactory` keeps the stack of open spans (`ResetInterface`).
   Assemblers → create processors → stack; on `end()` the stack is settled first (children
   close innermost first), then a non-reentrant queue runs end processors (try/catch) for
   recorded spans only. `AbstractSpan::end()` is idempotent.
-- `EventListener\{Request,Console,Message}EventListener` open spans for configured
+- `Presentation\EventListener\{Request,Console,Message}EventListener` open spans for configured
   routes/commands/messages; terminate listeners call `endAll()` at the very end. `reset()`
   (kernel.reset) ends open spans except a command span marked by `ProfilingFactoryInterface::keepOpenOnReset()`.
 - `ProfilingBundle` defines the `msstc4symfony_profiling` config tree.

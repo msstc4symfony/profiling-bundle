@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel;
 
-use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\AllowSpanDecisionMakerInterface;
+use Msstc4Symfony\ProfilingBundle\Application\DecisionMaker\AllowSpan\AllowSpanDecisionMakerInterface;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\ProfiledMessage;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
@@ -130,6 +130,7 @@ final class TestKernel extends Kernel
 #[AsCommand('test:ping')]
 final class PingCommand extends Command
 {
+    #[Override]
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         return Command::SUCCESS;

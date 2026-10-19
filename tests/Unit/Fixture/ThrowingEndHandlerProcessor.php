@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture;
 
-use Msstc4Symfony\ProfilingBundle\Framework\Processor\CreateSpan\CreateSpanProcessorInterface;
-use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Application\Processor\CreateSpan\CreateSpanProcessorInterface;
+use Msstc4Symfony\ProfilingBundle\Application\Span\SpanInterface;
 use Override;
 use RuntimeException;
 

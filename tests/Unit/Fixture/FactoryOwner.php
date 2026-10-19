@@ -4,8 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture;
 
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryOwnerTrait;
+use Msstc4Symfony\ProfilingBundle\Application\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\Application\ProfilingFactoryOwnerTrait;
 
 final class FactoryOwner
 {

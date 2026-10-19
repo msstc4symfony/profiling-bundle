@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture;
 
-use Msstc4Symfony\ProfilingBundle\Framework\Span\SpanInterface;
+use Msstc4Symfony\ProfilingBundle\Application\Span\SpanInterface;
 use Override;
 
 /**

@@ -54,12 +54,16 @@
 
 ## Слои (deptrac)
 
-`Framework` — ядро без зависимостей на остальное; `EventListener` → `Framework`;
-`ProfilingBundle` (корень) — от всех.
+С 2.0 — канонический шаблон bundle-standard v3: `Application` (ядро: фабрика, спаны, ассемблеры, decision
+makers, процессоры; бывший `Framework/` — это не точки расширения Symfony) ни от чего; `Presentation`
+(`Presentation/EventListener/*`, бывший `EventListener/`) → `Application`; `ProfilingBundle` (BundleRoot) — ни от
+чего внутри бандла. Публичный API — раздел README «Public API»; `@internal`: listener'ы, `ListBasedDecisionMaker`,
+`LoggerProcessor`. Мосты (`metrics-bridge-profiling`, `profiling-bridge-logic`) в тестах создают
+`ProfilingFactory` и `SpanAssembler` напрямую — поэтому оба публичные.
 
 ## Не-final классы
 
-- `Framework\Span\AbstractSpan` — `abstract`, точка расширения для собственных span (наследник
+- `Application\Span\AbstractSpan` — `abstract`, точка расширения для собственных span (наследник
   реализует `isRecorded()`). Его состояние `private`, `end()` / `endAt()` / `getEndedAt()` —
   `final`: фабрика закрывает детей через `endAt()`, переопределение пропустило бы handlers.
 

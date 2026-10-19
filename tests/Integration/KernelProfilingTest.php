@@ -6,19 +6,20 @@ namespace Msstc4Symfony\ProfilingBundle\Test\Integration;
 
 use LogicException;
 use Monolog\Handler\TestHandler;
-use Msstc4Symfony\ProfilingBundle\EventListener\ConsoleEventListener;
-use Msstc4Symfony\ProfilingBundle\EventListener\MessageEventListener;
-use Msstc4Symfony\ProfilingBundle\EventListener\RequestEventListener;
-use Msstc4Symfony\ProfilingBundle\Framework\Assembler\SpanAssembler;
-use Msstc4Symfony\ProfilingBundle\Framework\DecisionMaker\AllowSpan\ListBasedDecisionMaker;
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactory;
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\Application\Assembler\SpanAssembler;
+use Msstc4Symfony\ProfilingBundle\Application\DecisionMaker\AllowSpan\ListBasedDecisionMaker;
+use Msstc4Symfony\ProfilingBundle\Application\ProfilingFactory;
+use Msstc4Symfony\ProfilingBundle\Application\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\Presentation\EventListener\ConsoleEventListener;
+use Msstc4Symfony\ProfilingBundle\Presentation\EventListener\MessageEventListener;
+use Msstc4Symfony\ProfilingBundle\Presentation\EventListener\RequestEventListener;
 use Msstc4Symfony\ProfilingBundle\ProfilingBundle;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\AbstainingDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\LateDecisionMaker;
 use Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel\TestKernel;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\ProfiledMessage;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
+use Override;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\RequiresMethod;
 use PHPUnit\Framework\Attributes\TestWith;
@@ -67,6 +68,7 @@ final class KernelProfilingTest extends TestCase
     /** @var (callable(Throwable): void)|null */
     private $exceptionHandler;
 
+    #[Override]
     protected function setUp(): void
     {
         $this->exceptionHandler = $this->currentExceptionHandler();
@@ -75,6 +77,7 @@ final class KernelProfilingTest extends TestCase
         $this->kernel->boot();
     }
 
+    #[Override]
     protected function tearDown(): void
     {
         $this->kernel->shutdown();

@@ -4,7 +4,8 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle\Test\Integration\Kernel;
 
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\Application\ProfilingFactoryInterface;
+use Override;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -31,6 +32,7 @@ final class OrphanSpanOpener extends Command
         return new Response('ok');
     }
 
+    #[Override]
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $this->profilingFactory->createSpan('orphan');

@@ -12,7 +12,8 @@ in seconds and the span context).
 
 | Bundle | PHP  | Symfony       |
 |--------|------|---------------|
-| 1.1+   | 8.2+ | 7.4, 8.x      |
+| 2.0    | 8.2+ | 7.4, 8.x      |
+| 1.1    | 8.2+ | 7.4, 8.x      |
 | 1.0    | 8.4+ | 7.4, 8.x      |
 
 Symfony 8.x needs PHP 8.4; on PHP 8.2 and 8.3 Composer installs Symfony 7.4.
@@ -61,7 +62,7 @@ msstc4symfony_profiling:
 ## Usage
 
 ```php
-use Msstc4Symfony\ProfilingBundle\Framework\ProfilingFactoryInterface;
+use Msstc4Symfony\ProfilingBundle\Application\ProfilingFactoryInterface;
 
 final class OrderImporter
 {
@@ -128,6 +129,23 @@ never processed and is dropped from the stack.
 Span messages become log messages and, with metrics-bridge-profiling, Prometheus label values: keep
 them low-cardinality (`request orders_show`, not `request /orders/42`) and put ids into the
 context.
+
+## Public API
+
+Applications and bridges use or implement only these; every other class is `@internal` and may change in a minor
+release.
+
+| Namespace `Msstc4Symfony\ProfilingBundle\` | Classes |
+|---|---|
+| `Application` | `ProfilingFactoryInterface`, `ProfilingFactory`, `NullProfilingFactory`, `ProfilingFactoryOwnerTrait` |
+| `Application\Span` | `SpanInterface`, `AbstractSpan`, `Span`, `NullSpan` |
+| `Application\Assembler` | `SpanAssemblerInterface`, `SpanAssembler` |
+| `Application\DecisionMaker\AllowSpan` | `AllowSpanDecisionMakerInterface` |
+| `Application\Processor\CreateSpan` | `CreateSpanProcessorInterface` |
+| `Application\Processor\EndSpan` | `EndSpanProcessorInterface` |
+| (root) | `ProfilingBundle` |
+
+The configuration keys under `msstc4symfony_profiling` (see [Configuration](#configuration)) are public too.
 
 ## Local development
 

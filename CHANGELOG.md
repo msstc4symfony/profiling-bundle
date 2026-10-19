@@ -4,6 +4,21 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.0.0-rc.1] - 2026-10-19
+
+### Changed
+
+- `Msstc4Symfony\ProfilingBundle\Framework\*` → `Msstc4Symfony\ProfilingBundle\Application\*` (factory, spans,
+  assemblers, decision makers, processors; sub-namespaces unchanged).
+- `Msstc4Symfony\ProfilingBundle\EventListener\*` → `Msstc4Symfony\ProfilingBundle\Presentation\EventListener\*`.
+- Classes outside the README "Public API" are `@internal`: the event listeners, `ListBasedDecisionMaker`,
+  `LoggerProcessor`.
+- Service ids and autoconfiguration tag names follow the new FQCNs (services are registered by class, tags by
+  interface name): update decorations or manual tags that spell the old ones.
+- Configuration keys under `msstc4symfony_profiling` are unchanged.
+- PHPStan enforces `#[\Override]` on every overriding or implementing method (`checkMissingOverrideMethodAttribute`).
+- Adopts bundle-standard v3 (canonical hex layout, anchored deptrac `BundleRoot`).
+
 ## [1.1.0] - 2026-10-14
 
 ### Added
@@ -38,5 +53,6 @@ First release of `msstc4symfony/profiling-bundle` (namespace `Msstc4Symfony\Prof
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `psr/log` ^2.0|^3.0, `symfony/service-contracts` ^3.
 - Optional: Symfony Messenger (message spans), MonologBundle (the `profiling` channel).
 
+[2.0.0-rc.1]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.0.0-rc.1
 [1.1.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v1.1.0
 [1.0.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v1.0.0
