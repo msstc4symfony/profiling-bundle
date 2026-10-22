@@ -7,7 +7,7 @@ namespace Msstc4Symfony\ProfilingBundle\Application\Span;
 use Override;
 use Throwable;
 
-abstract class AbstractSpan implements SpanInterface
+abstract class AbstractSpan implements SpanInterface, EndableAtInterface
 {
     private readonly float $startTime;
 
@@ -121,6 +121,7 @@ abstract class AbstractSpan implements SpanInterface
      *
      * @param array<string, mixed> $context
      */
+    #[Override]
     final public function endAt(int $endedAt, array $context = []): void
     {
         if ($this->endedAt !== null) {
@@ -147,6 +148,7 @@ abstract class AbstractSpan implements SpanInterface
     /**
      * The hrtime instant the span ended at, or null while it is open.
      */
+    #[Override]
     final public function getEndedAt(): ?int
     {
         return $this->endedAt;

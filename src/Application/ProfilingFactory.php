@@ -7,7 +7,7 @@ namespace Msstc4Symfony\ProfilingBundle\Application;
 use Msstc4Symfony\ProfilingBundle\Application\Assembler\SpanAssemblerInterface;
 use Msstc4Symfony\ProfilingBundle\Application\Processor\CreateSpan\CreateSpanProcessorInterface;
 use Msstc4Symfony\ProfilingBundle\Application\Processor\EndSpan\EndSpanProcessorInterface;
-use Msstc4Symfony\ProfilingBundle\Application\Span\AbstractSpan;
+use Msstc4Symfony\ProfilingBundle\Application\Span\EndableAtInterface;
 use Msstc4Symfony\ProfilingBundle\Application\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Application\Span\SpanInterface;
 use Override;
@@ -186,13 +186,17 @@ final class ProfilingFactory implements ProfilingFactoryInterface, ResetInterfac
         }
 
         $this->endedSpans[] = [$span, $context];
-        $endedAt = $span instanceof AbstractSpan ? $span->getEndedAt() : null;
+        $endedAt = $span instanceof EndableAtInterface ? $span->getEndedAt() : null;
 
         try {
             foreach ($children as $child) {
                 try {
                     // Off the stack already, so its own factory handler does nothing.
-                    $endedAt !== null && $child instanceof AbstractSpan ? $child->endAt($endedAt, self::IMPLICIT_END) : $child->end(self::IMPLICIT_END);
+                    if ($endedAt !== null && $child instanceof EndableAtInterface) {
+                        $child->endAt($endedAt, self::IMPLICIT_END);
+                    } else {
+                        $child->end(self::IMPLICIT_END);
+                    }
                 } catch (Throwable $exception) {
                     $this->report('An end handler failed for span "{span}".', $child->getMessage(), $exception);
                 }

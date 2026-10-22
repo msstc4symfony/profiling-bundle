@@ -18,6 +18,7 @@ use Msstc4Symfony\ProfilingBundle\Application\Span\NullSpan;
 use Msstc4Symfony\ProfilingBundle\Application\Span\Span;
 use Msstc4Symfony\ProfilingBundle\Application\Span\SpanInterface;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\DecoratingSpan;
+use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\PlainDecoratingSpan;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingEndProcessor;
 use Override;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -29,6 +30,7 @@ use ReflectionClass;
 use ReflectionMethod;
 use RuntimeException;
 use Stringable;
+use Symfony\Component\ErrorHandler\BufferingLogger;
 
 #[CoversClass(ProfilingFactory::class)]
 #[UsesClass(SpanAssembler::class)]
@@ -369,6 +371,71 @@ final class ProfilingFactoryTest extends TestCase
         $parent->end();
 
         self::assertLessThanOrEqual($parent->getDuration(), $child->getDuration());
+    }
+
+    public function testWrappedChildrenEndAtTheirWrappedParentsEndTime(): void
+    {
+        $wrapping = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                return new DecoratingSpan($span);
+            }
+        };
+        $factory = new ProfilingFactory([new SpanAssembler([])], [$wrapping], [$this->recorder], new NullLogger());
+        $parent = $factory->createSpan('parent');
+        $child = $factory->createSpan('child');
+        $factory->createSpan('grandchild')->addEndHandler(static function (): void {
+            usleep(20_000);
+        });
+
+        $parent->end();
+
+        self::assertLessThanOrEqual($parent->getDuration(), $child->getDuration());
+    }
+
+    public function testChildrenOfAWrapperWithoutAnEndTimeEndWhenTheFactoryReachesThem(): void
+    {
+        $wrapping = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                return $span->getMessage() === 'parent' ? new PlainDecoratingSpan($span) : $span;
+            }
+        };
+        $factory = new ProfilingFactory([new SpanAssembler([])], [$wrapping], [$this->recorder], new NullLogger());
+        $parent = $factory->createSpan('parent');
+        $child = $factory->createSpan('child');
+        $factory->createSpan('grandchild')->addEndHandler(static function (): void {
+            usleep(20_000);
+        });
+
+        $parent->end();
+
+        self::assertTrue($child->isEnded());
+        self::assertGreaterThan($parent->getDuration(), $child->getDuration());
+        self::assertSame(['grandchild', 'child', 'decorated parent'], $this->recorder->messages());
+    }
+
+    public function testAChildWrapperWithoutAnEndTimeIsEndedWithTheMarker(): void
+    {
+        $wrapping = new class implements CreateSpanProcessorInterface {
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                return $span->getMessage() === 'child' ? new PlainDecoratingSpan($span) : $span;
+            }
+        };
+        $logger = new BufferingLogger();
+        $factory = new ProfilingFactory([new SpanAssembler([])], [$wrapping], [$this->recorder], $logger);
+        $parent = $factory->createSpan('parent');
+        $child = $factory->createSpan('child');
+
+        $parent->end();
+
+        self::assertTrue($child->isEnded());
+        self::assertSame([['decorated child', ProfilingFactoryInterface::IMPLICIT_END], ['parent', []]], $this->recorder->ended);
+        self::assertSame([], $logger->cleanLogs());
     }
 
     public function testADetachedChildEndedEarlierIsNotProcessed(): void

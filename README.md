@@ -81,8 +81,9 @@ Or `use ProfilingFactoryOwnerTrait;` in an autowired service: the factory is inj
 a `#[Required]` setter and falls back to a no-op factory outside the container.
 
 - A span opened while another is open becomes its child; ending a parent first ends every
-  child still open, innermost first, at the parent's end time (spans wrapped by a create
-  processor end when they are reached), with the context
+  child still open, innermost first, at the parent's end time — when both the parent and the
+  child implement `EndableAtInterface` (`AbstractSpan` does; a create-processor wrapper should
+  delegate it); otherwise the child ends when the factory gets to it, after the parent — with the context
   `ProfilingFactoryInterface::IMPLICIT_END` (`{"profiling_implicit_end": true}`), as do spans
   closed by `endAll()` / `kernel.reset`. `end()` fixes
   the duration (monotonic clock); calling it again does nothing.
@@ -120,7 +121,7 @@ measure the dispatch.
 |---|---|
 | `AllowSpanDecisionMakerInterface` | votes whether a span is recorded (`true`/`false`/`null` = abstain); asked by priority (`#[AsTaggedItem(priority: ...)]`), the first vote wins. The built-in list maker runs last (-1024) and abstains when no list is set |
 | `SpanAssemblerInterface` | builds the span object for a message |
-| `CreateSpanProcessorInterface` | can enrich or wrap a span when it is created. A wrapper must delegate `end()`, `isEnded()` and `addEndHandler()` to the wrapped span; the factory binds its end handler to the returned span |
+| `CreateSpanProcessorInterface` | can enrich or wrap a span when it is created. A wrapper must delegate `end()`, `isEnded()` and `addEndHandler()` to the wrapped span, and should implement `EndableAtInterface` by delegating too (so its children and itself end at their parent's end time); the factory binds its end handler to the returned span |
 | `EndSpanProcessorInterface` | receives every recorded span once, after it ended (`LoggerProcessor` is built in; `msstc4symfony/metrics-bridge-profiling` adds Prometheus durations). Order with `#[AsTaggedItem(priority: ...)]` |
 
 Do not remove the factory's own end handler (`getEndHandlers()` lists it): such a span is
@@ -138,7 +139,7 @@ release.
 | Namespace `Msstc4Symfony\ProfilingBundle\` | Classes |
 |---|---|
 | `Application` | `ProfilingFactoryInterface`, `ProfilingFactory`, `NullProfilingFactory`, `ProfilingFactoryOwnerTrait` |
-| `Application\Span` | `SpanInterface`, `AbstractSpan`, `Span`, `NullSpan` |
+| `Application\Span` | `SpanInterface`, `EndableAtInterface`, `AbstractSpan`, `Span`, `NullSpan` |
 | `Application\Assembler` | `SpanAssemblerInterface`, `SpanAssembler` |
 | `Application\DecisionMaker\AllowSpan` | `AllowSpanDecisionMakerInterface` |
 | `Application\Processor\CreateSpan` | `CreateSpanProcessorInterface` |
