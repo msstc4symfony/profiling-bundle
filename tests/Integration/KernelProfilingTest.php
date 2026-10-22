@@ -89,17 +89,6 @@ final class KernelProfilingTest extends TestCase
         }
     }
 
-    /**
-     * @return (callable(Throwable): void)|null
-     */
-    private function currentExceptionHandler(): ?callable
-    {
-        $handler = set_exception_handler(null);
-        restore_exception_handler();
-
-        return $handler;
-    }
-
     #[RequiresMethod(MonologBundle::class, 'build')]
     public function testWhitelistedRouteIsLoggedOnTheProfilingChannel(): void
     {
@@ -279,6 +268,17 @@ final class KernelProfilingTest extends TestCase
         $this->expectException(InvalidConfigurationException::class);
 
         $this->processConfig($config);
+    }
+
+    /**
+     * @return (callable(Throwable): void)|null
+     */
+    private function currentExceptionHandler(): ?callable
+    {
+        $handler = set_exception_handler(null);
+        restore_exception_handler();
+
+        return $handler;
     }
 
     /**
