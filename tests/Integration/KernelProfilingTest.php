@@ -299,7 +299,8 @@ final class KernelProfilingTest extends TestCase
         self::assertInstanceOf(EventDispatcherInterface::class, $dispatcher);
 
         foreach ($dispatcher->getListeners($event) as $listener) {
-            if (is_array($listener) && $listener[0] instanceof MessageEventListener && $listener[1] === $method) {
+            // Symfony 7.4 types the listeners as callable or array, 8 as callable.
+            if (is_array($listener) && is_callable($listener) && $listener[0] instanceof MessageEventListener && $listener[1] === $method) {
                 return $dispatcher->getListenerPriority($event, $listener);
             }
         }
