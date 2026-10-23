@@ -51,8 +51,19 @@ deptrac:
         # Spans, the factory, assemblers, decision makers and processors.
         Application: ~
 
+        # DBAL, HttpClient and Guzzle adapters open spans through the factory.
+        Infrastructure:
+            - Application
+
         # Request, console and message listeners open and close spans through the factory.
         Presentation:
             - Application
 
-        BundleRoot: ~
+        # Compiler passes reference the adapters by ::class and the factory services.
+        DependencyInjection:
+            - Application
+            - Infrastructure
+
+        # The auto span compiler passes and the requirements of the configuration.
+        BundleRoot:
+            - DependencyInjection

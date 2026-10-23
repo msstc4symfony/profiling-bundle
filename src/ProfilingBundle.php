@@ -4,9 +4,17 @@ declare(strict_types=1);
 
 namespace Msstc4Symfony\ProfilingBundle;
 
+use Msstc4Symfony\ProfilingBundle\DependencyInjection\AutoSpan;
+use Msstc4Symfony\ProfilingBundle\DependencyInjection\AutoSpanRequirements;
+use Msstc4Symfony\ProfilingBundle\DependencyInjection\CompilerPass\ProfileDoctrineDbalPass;
+use Msstc4Symfony\ProfilingBundle\DependencyInjection\CompilerPass\ProfileGuzzlePass;
+use Msstc4Symfony\ProfilingBundle\DependencyInjection\CompilerPass\ProfileHttpClientPass;
+use Msstc4Symfony\ProfilingBundle\DependencyInjection\CompilerPass\RegisterGuzzleMiddlewarePass;
 use Override;
 use Symfony\Component\Config\Definition\Builder\NodeBuilder;
 use Symfony\Component\Config\Definition\Configurator\DefinitionConfigurator;
+use Symfony\Component\Config\Definition\Exception\InvalidConfigurationException;
+use Symfony\Component\DependencyInjection\Compiler\PassConfig;
 use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Loader\Configurator\ContainerConfigurator;
 use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
@@ -14,6 +22,24 @@ use Symfony\Component\HttpKernel\Bundle\AbstractBundle;
 final class ProfilingBundle extends AbstractBundle
 {
     protected string $extensionAlias = 'msstc4symfony_profiling';
+
+    /**
+     * @param AutoSpanRequirements $autoSpanRequirements @internal tests replace the packages an auto span needs
+     */
+    public function __construct(
+        private readonly AutoSpanRequirements $autoSpanRequirements = new AutoSpanRequirements(),
+    ) {
+    }
+
+    #[Override]
+    public function build(ContainerBuilder $container): void
+    {
+        $container->addCompilerPass(new ProfileDoctrineDbalPass(), PassConfig::TYPE_BEFORE_OPTIMIZATION, ProfileDoctrineDbalPass::PRIORITY);
+        $container->addCompilerPass(new ProfileHttpClientPass());
+        $container->addCompilerPass(new RegisterGuzzleMiddlewarePass());
+        // After ResolveNamedArgumentsPass: a named "$config" argument of a client is at index 0 by then.
+        $container->addCompilerPass(new ProfileGuzzlePass(), PassConfig::TYPE_BEFORE_REMOVING);
+    }
 
     #[Override]
     public function configure(DefinitionConfigurator $definition): void
@@ -41,6 +67,23 @@ final class ProfilingBundle extends AbstractBundle
                 ->end()
             ;
         }
+
+        $autoSpans = $root->arrayNode('auto_spans')
+            ->addDefaultsIfNotSet()
+            ->info('Automatic spans for libraries; each needs its library installed.')
+            ->children()
+        ;
+        foreach (AutoSpan::cases() as $autoSpan) {
+            $missing = $this->autoSpanRequirements->missingPackages($autoSpan);
+            $autoSpans->booleanNode($autoSpan->value)
+                ->defaultFalse()
+                ->info($autoSpan->info())
+                ->validate()
+                    ->ifTrue(static fn (mixed $enabled): bool => $enabled === true && $missing !== [])
+                    ->thenInvalid(sprintf('"%s" needs %s installed.', $autoSpan->option(), implode(', ', $missing)))
+                ->end()
+            ;
+        }
     }
 
     /**
@@ -58,6 +101,17 @@ final class ProfilingBundle extends AbstractBundle
             ->set('msstc4symfony_profiling.spans.whitelist', is_array($config['spans'] ?? null) ? $config['spans']['whitelist'] ?? null : null)
             ->set('msstc4symfony_profiling.spans.blacklist', is_array($config['spans'] ?? null) ? $config['spans']['blacklist'] ?? null : null)
         ;
+
+        $autoSpans = is_array($config['auto_spans'] ?? null) ? $config['auto_spans'] : [];
+        foreach (AutoSpan::cases() as $autoSpan) {
+            $enabled = $autoSpans[$autoSpan->value] ?? false;
+            // An %env()% placeholder reaches here as a string: the flag decides the wiring, so it must be known now.
+            if (!is_bool($enabled)) {
+                throw new InvalidConfigurationException(sprintf('"%s" must be true or false; an environment variable cannot decide the container wiring.', $autoSpan->option()));
+            }
+
+            $container->parameters()->set($autoSpan->option(), $enabled);
+        }
     }
 
     private function stringList(NodeBuilder $parent, string $name, string $info, bool $classNames = false): void

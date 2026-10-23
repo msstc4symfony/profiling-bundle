@@ -16,6 +16,12 @@
     "profiling"
   ],
   "prefer-stable": true,
+  "repositories": [
+    {
+      "type": "vcs",
+      "url": "https://github.com/msstc4symfony/sql-labeller"
+    }
+  ],
   "autoload": {
     "psr-4": {
       "Msstc4Symfony\\ProfilingBundle\\": "src/"
@@ -43,8 +49,12 @@
   },
   "require-dev": {
     "deptrac/deptrac": "^4.6",
+    "doctrine/dbal": "^3.7|^4.0",
+    "doctrine/doctrine-bundle": "^2.13|^3.0",
     "friendsofphp/php-cs-fixer": "^3.76",
+    "guzzlehttp/guzzle": "^7.8|^8.0",
     "infection/infection": "^0.32",
+    "msstc4symfony/sql-labeller": "^1.0",
     "phpstan/extension-installer": "^1.4",
     "phpstan/phpstan": "^2.1",
     "phpstan/phpstan-strict-rules": "^2.0",
@@ -53,11 +63,17 @@
     "rector/rector": "^2.1",
     "roave/backward-compatibility-check": "^8.20",
     "roave/security-advisories": "dev-latest",
+    "symfony/http-client": "^7.4|^8.0",
     "symfony/messenger": "^7.4|^8.0",
     "symfony/monolog-bundle": "^3.11|^4.0"
   },
   "suggest": {
+    "doctrine/dbal": "To profile DBAL queries (auto_spans.dbal)",
+    "doctrine/doctrine-bundle": "To register the DBAL query spans middleware on its connections (auto_spans.dbal)",
+    "guzzlehttp/guzzle": "To profile Guzzle requests (auto_spans.guzzle)",
     "msstc4symfony/metrics-bridge-profiling": "To export span durations as Prometheus metrics",
+    "msstc4symfony/sql-labeller": "Needed by auto_spans.dbal for the statement type and table (register its vcs repository, see README)",
+    "symfony/http-client": "To profile Symfony HttpClient requests (auto_spans.http_client)",
     "symfony/messenger": "To profile consumed messages (messages option)",
     "symfony/monolog-bundle": "To write finished spans to the \"profiling\" log channel"
   },
@@ -69,7 +85,11 @@
     "sort-packages": true
   },
   "conflict": {
+    "doctrine/dbal": "<3.7",
+    "doctrine/doctrine-bundle": "<2.13",
+    "guzzlehttp/guzzle": "<7.8",
     "symfony/error-handler": "<7.4.17 || >=8.0,<8.1.5",
+    "symfony/http-client": "<7.4",
     "symfony/symfony": "*"
   },
   "extra": {

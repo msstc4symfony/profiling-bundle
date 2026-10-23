@@ -26,7 +26,10 @@ Develop against the CI profile: `COMPOSER=composer-ci.json composer install`.
 - `Presentation\EventListener\{Request,Console,Message}EventListener` open spans for configured
   routes/commands/messages; terminate listeners call `endAll()` at the very end. `reset()`
   (kernel.reset) ends open spans except a command span marked by `ProfilingFactoryInterface::keepOpenOnReset()`.
-- `ProfilingBundle` defines the `msstc4symfony_profiling` config tree.
+- `ProfilingBundle` defines the `msstc4symfony_profiling` config tree and adds the auto span compiler passes
+  (`DependencyInjection/CompilerPass/Profile{DoctrineDbal,HttpClient,Guzzle}Pass`, opt-in `auto_spans.*`); their
+  adapters live in `Infrastructure/` (excluded from the resource scan). HTTP spans are detached
+  (`DetachedSpanFactoryInterface::createDetachedSpan()`: not on the stack, ended by `endAll()`/`reset()`).
 - `Resources/config/services.php` autoloads the whole namespace; extension points are
   autoconfigured by interface. Rector's `FromServicePublicToDefaultsPublicRector` and
   `ServiceSettersToSettersAutodiscoveryRector` are skipped on purpose.

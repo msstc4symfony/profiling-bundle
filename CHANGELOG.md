@@ -4,6 +4,54 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.2.0] - 2026-10-22
+
+### Added
+
+- Opt-in automatic spans, all off by default (`true`/`false` only, no `%env()%`):
+  - `auto_spans.dbal`: `sql <type> <table>` (context `connection`) around Doctrine DBAL `query()`, `exec()` and
+    `Statement::execute()`, through a driver middleware per DoctrineBundle connection (tag priority -100);
+  - `auto_spans.http_client`: detached `http <METHOD> <host>` (context `url_path`) for Symfony HttpClient requests,
+    by decorating `http_client.transport` at priority -25; one span per attempt behind `retry_failed`, none for
+    `caching` hits;
+  - `auto_spans.guzzle`: detached `http <METHOD> <host>` (context `url_path`) for Guzzle client services, through the
+    outermost handler-stack middleware (one span covers redirects and retries); clients whose options make Guzzle 8
+    build its own handler get it through a service configurator.
+
+  `url_path` replaces ids (`:uuid`, `:id`, `:hash`). Enabling an option without its packages is a configuration
+  error; `dbal` without DoctrineBundle configured and `http_client` without `framework.http_client` fail the
+  compilation with a `LogicException`. Spans the integrations open while end processors run or while a span is
+  being created (decision makers, create processors) are not recorded, so a log handler or decision maker writing
+  through DBAL or HTTP cannot feed itself.
+- `Application\DetachedSpanFactoryInterface` (extends `ProfilingFactoryInterface`; `createDetachedSpan()`, context
+  markers `DETACHED` and `AUTOMATIC`), implemented by `ProfilingFactory` and `NullProfilingFactory`: spans that are
+  not pushed on the stack, for work completing outside its nesting such as asynchronous HTTP responses. A detached
+  span may end after its parent: the 2.1 guarantee that a child never outlasts its parent does not cover it.
+  `endAll()` and `reset()` end the open ones, in at most `ProfilingFactory::MAX_END_PASSES` rounds. The
+  integrations reach the factory through this service: a factory decorator decorates `ProfilingFactory` and
+  implements this interface.
+
+### Fixed
+
+- End processors run only once an ended span and all its implicitly ended children are settled: an end handler of a
+  child that ended another span no longer made processors see siblings still open.
+- `endAll()` and `reset()` stop after `ProfilingFactory::MAX_END_PASSES` rounds, with an error log, when end
+  processors keep opening spans; a custom span throwing from `setParentSpan()` or `addEndHandler()` is logged instead
+  of reaching the profiled code.
+
+### Changed
+
+- `ProfilingBundle::__construct()` takes an optional argument (internal, for tests); `new ProfilingBundle()` is
+  unchanged.
+
+### Requirements
+
+- Optional, per auto span: `doctrine/dbal` >= 3.7, `doctrine/doctrine-bundle` >= 2.13 and
+  `msstc4symfony/sql-labeller` ^1.0 (`dbal`); `symfony/http-client` >= 7.4 (`http_client`); `guzzlehttp/guzzle`
+  >= 7.8 (`guzzle`). Older versions are declared as conflicts. `msstc4symfony/sql-labeller` is not on Packagist:
+  register `composer config repositories.msstc4symfony-sql-labeller vcs https://github.com/msstc4symfony/sql-labeller`
+  in the application (Composer ignores the repositories of a dependency).
+
 ## [2.1.0] - 2026-10-22
 
 ### Added
@@ -66,6 +114,7 @@ First release of `msstc4symfony/profiling-bundle` (namespace `Msstc4Symfony\Prof
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `psr/log` ^2.0|^3.0, `symfony/service-contracts` ^3.
 - Optional: Symfony Messenger (message spans), MonologBundle (the `profiling` channel).
 
+[2.2.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.2.0
 [2.1.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.1.0
 [2.0.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.0.0
 [2.0.0-rc.1]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.0.0-rc.1
