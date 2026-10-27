@@ -41,10 +41,18 @@ final class ProfileHttpClientPass implements CompilerPassInterface
             throw new LogicException(sprintf('"%s" needs "framework.http_client" enabled.', AutoSpan::HTTP_CLIENT->option()));
         }
 
+        // A transport defined by the application may have a base_uri in its $defaultOptions (the first argument of the
+        // Symfony transports), which requests never carry; FrameworkBundle's own transport has none. An %env()%
+        // stays a placeholder for runtime, a "%%" stays escaped: the container unescapes the argument itself.
+        $arguments = $container->findDefinition(self::TRANSPORT_ID)->getArguments();
+        $defaults = $container->getParameterBag()->resolveValue($arguments[0] ?? $arguments['$defaultOptions'] ?? []);
+        $baseUri = is_array($defaults) ? $defaults['base_uri'] ?? null : null;
+
         $container->register(self::DECORATOR_ID, ProfilingHttpClient::class)
             ->setArguments([
                 '$inner' => new Reference(self::DECORATOR_ID . '.inner'),
                 '$profiling' => new Reference(DetachedSpanFactoryInterface::class),
+                '$baseUri' => is_string($baseUri) || is_array($baseUri) ? $baseUri : null,
             ])
             ->setDecoratedService(self::TRANSPORT_ID, null, self::DECORATION_PRIORITY)
         ;

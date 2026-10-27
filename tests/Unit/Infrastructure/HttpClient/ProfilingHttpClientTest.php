@@ -32,6 +32,7 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 use RuntimeException;
 use Symfony\Component\HttpClient\Exception\ClientException;
+use Symfony\Component\HttpClient\Exception\InvalidArgumentException;
 use Symfony\Component\HttpClient\Exception\ServerException;
 use Symfony\Component\HttpClient\Exception\TransportException;
 use Symfony\Component\HttpClient\MockHttpClient;
@@ -82,11 +83,37 @@ final class ProfilingHttpClientTest extends TestCase
         self::assertSame(['url_path' => '/a/b', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $span->getContext());
     }
 
-    public function testTheHostAndPathComeFromTheResolvedUrl(): void
+    public function testTheSpanOpensBeforeTheInnerClientSendsTheRequest(): void
+    {
+        $opening = new class implements CreateSpanProcessorInterface {
+            /** @var list<string> */
+            public array $opened = [];
+
+            #[Override]
+            public function process(SpanInterface $span): SpanInterface
+            {
+                $this->opened[] = $span->getMessage();
+
+                return $span;
+            }
+        };
+        $openedWhenSent = null;
+        $inner = new MockHttpClient(static function () use ($opening, &$openedWhenSent): MockResponse {
+            $openedWhenSent = $opening->opened;
+
+            return new MockResponse('{}');
+        });
+
+        (new ProfilingHttpClient($inner, new ProfilingFactory([new SpanAssembler([])], [$opening], [], new NullLogger())))->request('GET', 'https://api.example.com/x')->getContent();
+
+        self::assertSame(['http GET api.example.com'], $openedWhenSent);
+    }
+
+    public function testTheHostAndPathComeFromTheTransportsDefaultBaseUri(): void
     {
         $inner = new MockHttpClient(new MockResponse('{}'), 'https://api.example.com');
 
-        (new ProfilingHttpClient($inner, $this->factory))->request('POST', '/v1/orders')->toArray();
+        (new ProfilingHttpClient($inner, $this->factory, 'https://api.example.com'))->request('POST', '/v1/orders')->toArray();
 
         self::assertSame(['http POST api.example.com'], $this->recorder->messages());
         self::assertSame(['url_path' => '/v1/orders', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
@@ -220,7 +247,7 @@ final class ProfilingHttpClientTest extends TestCase
         self::assertSame(['a' => 1, 'b' => 2], $response->toArray());
     }
 
-    public function testWithoutAResolvedUrlTheRequestedOneNamesTheSpan(): void
+    public function testAResponseWithoutInfoStillGetsASpanNamedAfterTheRequestedUrl(): void
     {
         $inner = self::createStub(HttpClientInterface::class);
         $inner->method('request')->willReturn(self::createStub(ResponseInterface::class));
@@ -550,6 +577,86 @@ final class ProfilingHttpClientTest extends TestCase
         self::assertSame(['http GET example.com'], $this->recorder->messages());
     }
 
+    public function testTheBaseUriOfTheRequestWinsOverTheDefaultOne(): void
+    {
+        $this->client(new MockResponse('{}'), 'https://default.example.com')->request('GET', 'v2/items', ['base_uri' => 'https://api.example.com/shop/'])->getContent();
+
+        self::assertSame(['http GET api.example.com'], $this->recorder->messages());
+        self::assertSame('/shop/v2/items', $this->recorder->spans[0]->getContext()['url_path']);
+    }
+
+    public function testANullBaseUriOfTheRequestDropsTheDefaultOne(): void
+    {
+        $this->client(new MockResponse('{}'), 'https://default.example.com')->request('GET', 'https://api.example.com/a', ['base_uri' => null])->getContent();
+
+        try {
+            $this->client(new MockResponse('{}'), 'https://default.example.com')->request('GET', '/b', ['base_uri' => null]);
+            self::fail('The transport rejects a relative URL without a base.');
+        } catch (InvalidArgumentException) {
+        }
+
+        self::assertSame(['http GET api.example.com', 'http GET unknown'], $this->recorder->messages());
+    }
+
+    public function testABaseUriGivenAsPartsIsResolved(): void
+    {
+        $this->client(new MockResponse('{}'))->request('GET', 'items', ['base_uri' => ['scheme' => 'https:', 'authority' => '//parts.example.com', 'path' => '/shop/']])->getContent();
+
+        self::assertSame(['http GET parts.example.com'], $this->recorder->messages());
+        self::assertSame('/shop/items', $this->recorder->spans[0]->getContext()['url_path']);
+    }
+
+    public function testWithOptionsKeepsTheBaseUriUntilAnotherOneReplacesIt(): void
+    {
+        $client = (new ProfilingHttpClient(new MockHttpClient(static fn (): MockResponse => new MockResponse('{}')), $this->factory))
+            ->withOptions(['base_uri' => 'https://a.example.com'])
+        ;
+        $client->withOptions(['timeout' => 3])->request('GET', '/x')->getContent();
+        $client->withOptions(['base_uri' => 'https://b.example.com'])->request('GET', '/x')->getContent();
+        $client->withOptions(['base_uri' => 'https://c.example.com'])->request('GET', 'https://d.example.com/x')->getContent();
+
+        self::assertSame(['http GET a.example.com', 'http GET b.example.com', 'http GET d.example.com'], $this->recorder->messages());
+    }
+
+    public function testWithOptionsDropsTheBaseUriForNull(): void
+    {
+        $client = $this->client(new MockResponse('{}'), 'https://default.example.com')->withOptions(['base_uri' => null]);
+
+        try {
+            $client->request('GET', '/x');
+        } catch (InvalidArgumentException) {
+        }
+
+        self::assertSame(['http GET unknown'], $this->recorder->messages());
+    }
+
+    /**
+     * @param array<array-key, mixed>|int $baseUri
+     */
+    #[TestWith([42])]
+    #[TestWith([['x']])]
+    #[TestWith([['path' => 1]])]
+    public function testABaseUriOfAnotherShapeNamesAnUnknownHost(array|int $baseUri): void
+    {
+        try {
+            $this->client(new MockResponse('{}'))->request('GET', '/x', ['base_uri' => $baseUri]);
+        } catch (Throwable) {
+            // The transport rejects it too, but the span was named first.
+        }
+
+        self::assertSame(['http GET unknown'], $this->recorder->messages());
+    }
+
+    public function testARelativeUrlWithoutABaseUriNamesAnUnknownHost(): void
+    {
+        $inner = new MockHttpClient(new MockResponse('{}'), 'https://api.example.com');
+
+        (new ProfilingHttpClient($inner, $this->factory))->request('GET', '/v1/orders')->getContent();
+
+        self::assertSame(['http GET unknown'], $this->recorder->messages());
+        self::assertSame('/v1/orders', $this->recorder->spans[0]->getContext()['url_path']);
+    }
+
     public function testWithOptionsKeepsProfiling(): void
     {
         $client = $this->client(new MockResponse('body'))->withOptions(['base_uri' => 'https://scoped.example.com']);
@@ -588,8 +695,8 @@ final class ProfilingHttpClientTest extends TestCase
         return $profiled;
     }
 
-    private function client(MockResponse $response): ProfilingHttpClient
+    private function client(MockResponse $response, ?string $defaultBaseUri = null): ProfilingHttpClient
     {
-        return new ProfilingHttpClient(new MockHttpClient($response), $this->factory);
+        return new ProfilingHttpClient(new MockHttpClient($response), $this->factory, $defaultBaseUri);
     }
 }

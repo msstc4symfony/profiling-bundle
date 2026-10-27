@@ -22,9 +22,9 @@ use Symfony\Contracts\Service\ResetInterface;
 use Throwable;
 
 /**
- * Decorates http_client.transport: every client, default and scoped, ends there with an absolute URL, so each
- * request gets exactly one "http <METHOD> <host>" span. The span is detached because the response completes after
- * request() returns; nothing is read in request(), which would serialize concurrent requests.
+ * Decorates http_client.transport: every client, default and scoped, ends there, so each request gets exactly one
+ * "http <METHOD> <host>" span. The span is detached because the response completes after request() returns; nothing is
+ * read in request(), which would serialize concurrent requests.
  *
  * @internal registered by ProfileHttpClientPass
  */
@@ -32,9 +32,14 @@ final class ProfilingHttpClient implements HttpClientInterface, ResetInterface, 
 {
     use DecoratorTrait;
 
+    /**
+     * @param string|array<string, string|null>|null $baseUri the transport's own base_uri default, which
+     *                                                        requests do not carry
+     */
     public function __construct(
         HttpClientInterface $inner,
         private readonly DetachedSpanFactoryInterface $profiling,
+        private string|array|null $baseUri = null,
     ) {
         $this->client = $inner;
     }
@@ -45,21 +50,40 @@ final class ProfilingHttpClient implements HttpClientInterface, ResetInterface, 
     #[Override]
     public function request(string $method, string $url, array $options = []): ResponseInterface
     {
+        // Opened before the request goes out: a create processor may put the span's id into the request's headers.
+        try {
+            // As the transport merges its defaults: a base_uri option, even null, wins over the default one.
+            $baseUri = array_key_exists('base_uri', $options) ? $options['base_uri'] : $this->baseUri;
+            $span = $this->createSpan($method, RequestedUrl::resolve($url, $this->baseUri($baseUri)));
+        } catch (Throwable) {
+            return $this->client->request($method, $url, $options);
+        }
+
         try {
             $response = $this->client->request($method, $url, $options);
         } catch (Throwable $exception) {
-            $this->recordFailedRequest($method, $url, $exception);
+            $this->endFailedRequest($span, $exception);
 
             throw $exception;
         }
 
-        try {
-            $span = $this->openSpan($method, $url, $response);
-        } catch (Throwable) {
-            return $response;
+        return new ProfiledResponse($response, $this->client, $span, $this->profiling);
+    }
+
+    /**
+     * @param array<array-key, mixed> $options
+     */
+    #[Override]
+    public function withOptions(array $options): static
+    {
+        $clone = clone $this;
+        $clone->client = $this->client->withOptions($options);
+
+        if (array_key_exists('base_uri', $options)) {
+            $clone->baseUri = $this->baseUri($options['base_uri']);
         }
 
-        return new ProfiledResponse($response, $this->client, $span, $this->profiling);
+        return $clone;
     }
 
     #[Override]
@@ -93,33 +117,48 @@ final class ProfilingHttpClient implements HttpClientInterface, ResetInterface, 
         }
     }
 
-    private function openSpan(string $method, string $url, ResponseInterface $response): SpanInterface
+    /**
+     * @return string|array<string, string|null>|null
+     */
+    private function baseUri(mixed $value): string|array|null
     {
-        // The inner response knows its resolved URL, including a base_uri this decorator never sees.
-        $resolvedUrl = $response->getInfo('url');
+        if (is_string($value) || $value === null) {
+            return $value;
+        }
 
-        return $this->createSpan($method, is_string($resolvedUrl) && $resolvedUrl !== '' ? $resolvedUrl : $url);
+        if (!is_array($value)) {
+            return null;
+        }
+
+        $parts = [];
+        foreach ($value as $key => $part) {
+            if (!is_string($key) || ($part !== null && !is_string($part))) {
+                return null;
+            }
+
+            $parts[$key] = $part;
+        }
+
+        return $parts;
     }
 
     /**
-     * Invalid options or a failing inner decorator throw before there is a response; the attempt still gets a span.
+     * Invalid options or a failing inner decorator throw before there is a response.
      */
-    private function recordFailedRequest(string $method, string $url, Throwable $exception): void
+    private function endFailedRequest(SpanInterface $span, Throwable $exception): void
     {
         try {
-            $this->profiling->endSpan($this->createSpan($method, $url), ['exception' => get_debug_type($exception)]);
+            $this->profiling->endSpan($span, ['exception' => get_debug_type($exception)]);
         } catch (Throwable) {
             // The caller gets the request's exception, not one from profiling.
         }
     }
 
-    private function createSpan(string $method, string $url): SpanInterface
+    private function createSpan(string $method, RequestedUrl $url): SpanInterface
     {
-        $parts = parse_url($url);
-
         return $this->profiling->createDetachedSpan(
-            OutgoingRequestSpan::message($method, is_array($parts) ? $parts['host'] ?? '' : ''),
-            OutgoingRequestSpan::context(is_array($parts) ? $parts['path'] ?? '' : ''),
+            OutgoingRequestSpan::message($method, $url->host),
+            OutgoingRequestSpan::context($url->path),
         );
     }
 

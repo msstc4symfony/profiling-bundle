@@ -4,6 +4,19 @@ All notable changes to this bundle are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), versions follow
 [Semantic Versioning](https://semver.org/); dates are UTC.
 
+## [2.3.1] - 2026-10-27
+
+### Fixed
+
+- The `http_client` span opened after the inner client had sent the request, so a create processor could not put its
+  id into the request's headers (tracing-bridge-profiling 1.3). It now opens before: its host and path come from the
+  requested URL resolved as the transport resolves it, against the request's `base_uri` (a string or parts; `null`
+  drops the default), a `withOptions()` one, or the `base_uri` in the `$defaultOptions` of an application-defined
+  `http_client.transport`. Scoped clients, `retry_failed` and URI templates hand the transport absolute URLs, as
+  before. A relative URL without any base names the host `unknown` — also behind FrameworkBundle's
+  `mock_response_factory`, whose MockHttpClient sits inside the decorator. Its duration now includes the time
+  `request()` takes.
+
 ## [2.3.0] - 2026-10-27
 
 ### Added
@@ -121,6 +134,7 @@ First release of `msstc4symfony/profiling-bundle` (namespace `Msstc4Symfony\Prof
 - PHP >= 8.4, Symfony ^7.4|^8.0, Monolog ^3.5, `psr/log` ^2.0|^3.0, `symfony/service-contracts` ^3.
 - Optional: Symfony Messenger (message spans), MonologBundle (the `profiling` channel).
 
+[2.3.1]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.3.1
 [2.3.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.3.0
 [2.2.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.2.0
 [2.1.0]: https://github.com/msstc4symfony/profiling-bundle/releases/tag/v2.1.0
