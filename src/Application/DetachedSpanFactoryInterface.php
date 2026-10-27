@@ -27,6 +27,14 @@ interface DetachedSpanFactoryInterface extends ProfilingFactoryInterface
     public const AUTOMATIC = ['profiling_automatic' => true];
 
     /**
+     * Context of the detached spans of outgoing HTTP requests (HttpClient and Guzzle), so create processors can tell
+     * them from other detached work, e.g. to put the span's id in the request's trace headers.
+     *
+     * @var array{profiling_outgoing_request: true}
+     */
+    public const OUTGOING_REQUEST = ['profiling_outgoing_request' => true];
+
+    /**
      * Like createSpan(), but the span is not pushed on the stack: its parent is the span open now, spans opened
      * meanwhile do not become its children and ending its parent does not end it. Open detached spans end with
      * IMPLICIT_END on endAll() and on reset(), whatever keepOpenOnReset() marked.

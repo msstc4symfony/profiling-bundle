@@ -190,7 +190,7 @@ final class AutoSpansKernelTest extends TestCase
             [['http GET example.com', ['status' => 202]], ['http POST scoped.example.com', ['status' => 202]]],
             $this->recorder()->ended,
         );
-        self::assertSame(['url_path' => '/ping', 'profiling_automatic' => true, 'profiling_detached' => true], $this->recorder()->spans[0]->getContext());
+        self::assertSame(['url_path' => '/ping', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $this->recorder()->spans[0]->getContext());
     }
 
     public function testGuzzleClientServicesGetADetachedSpan(): void
@@ -213,6 +213,10 @@ final class AutoSpansKernelTest extends TestCase
         self::assertSame(
             [['http GET example.com', ['status' => 200]], ['http GET example.com', ['exception' => ClientException::class, 'status' => 404]]],
             $this->recorder()->ended,
+        );
+        self::assertSame(
+            ['url_path' => '/a', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true],
+            $this->recorder()->spans[0]->getContext(),
         );
     }
 

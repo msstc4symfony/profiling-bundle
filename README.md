@@ -86,8 +86,8 @@ msstc4symfony_profiling:
 | Option | Span message | Context | End context |
 |---|---|---|---|
 | `dbal` | `sql <select\|insert\|update\|delete\|other> <table>` (`unknown` without a table), e.g. `sql select orders` | `connection` (DoctrineBundle connection name), `profiling_automatic` | `exception` (class) when the query throws |
-| `http_client` | `http <METHOD> <host>`, e.g. `http GET api.example.com` | `url_path`, `profiling_automatic`, `profiling_detached` | `status`; `exception` (class) on a transport or HTTP error; `cancelled` (before the headers) or `body_cancelled` + `status` (after them); `stream_closed` when a `toStream()` stream is closed; `response_destroyed` when the response is destroyed unfinished |
-| `guzzle` | `http <METHOD> <host>` | `url_path`, `profiling_automatic`, `profiling_detached` | `status`; `exception` (class) when the promise is rejected, plus `status` when the rejection carries a response; `exception` when the handler throws |
+| `http_client` | `http <METHOD> <host>`, e.g. `http GET api.example.com` | `url_path`, `profiling_automatic`, `profiling_outgoing_request`, `profiling_detached` | `status`; `exception` (class) on a transport or HTTP error; `cancelled` (before the headers) or `body_cancelled` + `status` (after them); `stream_closed` when a `toStream()` stream is closed; `response_destroyed` when the response is destroyed unfinished |
+| `guzzle` | `http <METHOD> <host>` | `url_path`, `profiling_automatic`, `profiling_outgoing_request`, `profiling_detached` | `status`; `exception` (class) when the promise is rejected, plus `status` when the rejection carries a response; `exception` when the handler throws |
 
 Enabling an option whose packages are missing is a configuration error (`"msstc4symfony_profiling.auto_spans.<option>"
 needs <packages> installed.`). With the packages present, `dbal` without DoctrineBundle registered and
@@ -147,6 +147,10 @@ Decision makers and create processors apply as for `createSpan()`; its context c
 under a span kept by `keepOpenOnReset()`), including detached spans opened while those end the stack. End
 processors that open a new span for every span they process would keep that going: after
 `ProfilingFactory::MAX_END_PASSES` (64) rounds the factory stops and logs an error.
+
+The spans of the `http_client` and `guzzle` integrations also carry `DetachedSpanFactoryInterface::OUTGOING_REQUEST`
+(`{"profiling_outgoing_request": true}`), so a create processor can tell an outgoing request from other detached work:
+tracing-bridge-profiling, for one, reserves the trace span id of such a span for the request's `traceparent`.
 
 ## Usage
 

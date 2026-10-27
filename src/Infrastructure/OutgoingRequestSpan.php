@@ -28,11 +28,15 @@ final class OutgoingRequestSpan
     }
 
     /**
-     * @return array{url_path: non-empty-string, profiling_automatic: true}
+     * @return array{url_path: non-empty-string, profiling_automatic: true, profiling_outgoing_request: true}
      */
     public static function context(string $path): array
     {
-        return ['url_path' => self::sanitize($path), ...DetachedSpanFactoryInterface::AUTOMATIC];
+        return [
+            'url_path' => self::sanitize($path),
+            ...DetachedSpanFactoryInterface::AUTOMATIC,
+            ...DetachedSpanFactoryInterface::OUTGOING_REQUEST,
+        ];
     }
 
     /**

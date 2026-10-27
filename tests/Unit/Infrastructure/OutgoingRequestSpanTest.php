@@ -30,6 +30,6 @@ final class OutgoingRequestSpanTest extends TestCase
     #[TestWith(['42', ':id'])]
     public function testIdsInThePathBecomePlaceholders(string $path, string $sanitized): void
     {
-        self::assertSame(['url_path' => $sanitized, 'profiling_automatic' => true], OutgoingRequestSpan::context($path));
+        self::assertSame(['url_path' => $sanitized, 'profiling_automatic' => true, 'profiling_outgoing_request' => true], OutgoingRequestSpan::context($path));
     }
 }

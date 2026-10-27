@@ -76,7 +76,7 @@ final class ProfilingGuzzleMiddlewareTest extends TestCase
         self::assertSame(201, $response->getStatusCode());
         self::assertSame([['http POST api.example.com', ['status' => 201]]], $this->recorder->ended);
         self::assertSame($outer, $this->recorder->spans[0]->getParentSpan());
-        self::assertSame(['url_path' => '/v1/orders', 'profiling_automatic' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
+        self::assertSame(['url_path' => '/v1/orders', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
         self::assertFalse($outer->isEnded());
     }
 
@@ -84,7 +84,7 @@ final class ProfilingGuzzleMiddlewareTest extends TestCase
     {
         $this->client(new Response(200))->request('GET', 'https://example.com');
 
-        self::assertSame(['url_path' => '/', 'profiling_automatic' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
+        self::assertSame(['url_path' => '/', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
     }
 
     public function testOneSpanCoversTheRedirects(): void

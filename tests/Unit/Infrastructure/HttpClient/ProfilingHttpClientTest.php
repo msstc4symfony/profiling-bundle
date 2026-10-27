@@ -79,7 +79,7 @@ final class ProfilingHttpClientTest extends TestCase
         self::assertSame([['http GET example.com', ['status' => 200]]], $this->recorder->ended);
         $span = $this->recorder->spans[0];
         self::assertSame($outer, $span->getParentSpan());
-        self::assertSame(['url_path' => '/a/b', 'profiling_automatic' => true, 'profiling_detached' => true], $span->getContext());
+        self::assertSame(['url_path' => '/a/b', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $span->getContext());
     }
 
     public function testTheHostAndPathComeFromTheResolvedUrl(): void
@@ -89,7 +89,7 @@ final class ProfilingHttpClientTest extends TestCase
         (new ProfilingHttpClient($inner, $this->factory))->request('POST', '/v1/orders')->toArray();
 
         self::assertSame(['http POST api.example.com'], $this->recorder->messages());
-        self::assertSame(['url_path' => '/v1/orders', 'profiling_automatic' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
+        self::assertSame(['url_path' => '/v1/orders', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
     }
 
     public function testWithoutAResolvedUrlAPathlessRequestIsProfiledAsSlash(): void
@@ -230,7 +230,7 @@ final class ProfilingHttpClientTest extends TestCase
 
         self::assertInstanceOf(ProfiledResponse::class, $response);
         self::assertSame(['http GET fallback.example.com'], $this->recorder->messages());
-        self::assertSame(['url_path' => '/p', 'profiling_automatic' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
+        self::assertSame(['url_path' => '/p', 'profiling_automatic' => true, 'profiling_outgoing_request' => true, 'profiling_detached' => true], $this->recorder->spans[0]->getContext());
     }
 
     public function testARequestThatThrowsGetsASpanWithTheException(): void
