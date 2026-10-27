@@ -20,6 +20,7 @@ use Symfony\Component\DependencyInjection\ContainerBuilder;
 use Symfony\Component\DependencyInjection\Definition;
 use Symfony\Component\DependencyInjection\Reference;
 use Symfony\Component\HttpClient\CurlHttpClient;
+use Symfony\Component\HttpClient\DecoratorTrait;
 
 #[CoversClass(ProfileHttpClientPass::class)]
 #[UsesClass(AutoSpan::class)]
@@ -76,6 +77,10 @@ final class ProfileHttpClientPassTest extends TestCase
 
     public function testAnEscapedPercentReachesTheDecoratorOnce(): void
     {
+        if (!trait_exists(DecoratorTrait::class)) {
+            self::markTestSkipped('symfony/http-client is not installed');
+        }
+
         $container = $this->container(true);
         $container->setDefinition('http_client.transport', (new Definition(CurlHttpClient::class, [['base_uri' => 'https://example.com/%%41%%42/']]))->setPublic(true));
         $container->register(DetachedSpanFactoryInterface::class, NullProfilingFactory::class);
