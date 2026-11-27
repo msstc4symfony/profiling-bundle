@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   standard:
-    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v4.2.0
+    uses: msstc4symfony/bundle-standard/.github/workflows/php-bundle.yml@v4.3.0
     with:
       extensions: 'mbstring, xml, ctype, iconv, intl, json, pdo_sqlite'
       infection-min-msi: 82
