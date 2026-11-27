@@ -18,6 +18,8 @@ use Msstc4Symfony\ProfilingBundle\Application\Span\SpanInterface;
 use Msstc4Symfony\ProfilingBundle\Infrastructure\HttpClient\CompletionStreamFilter;
 use Msstc4Symfony\ProfilingBundle\Infrastructure\HttpClient\ProfiledResponse;
 use Msstc4Symfony\ProfilingBundle\Infrastructure\HttpClient\ProfilingHttpClient;
+use Msstc4Symfony\ProfilingBundle\Infrastructure\HttpClient\RequestedUrl;
+use Msstc4Symfony\ProfilingBundle\Infrastructure\HttpClient\SymfonyUrlResolver;
 use Msstc4Symfony\ProfilingBundle\Infrastructure\OutgoingRequestSpan;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\HttpClient\ResettableLoggingClient;
 use Msstc4Symfony\ProfilingBundle\Test\Unit\Fixture\RecordingDetachedFactory;
@@ -50,6 +52,8 @@ use Throwable;
 #[UsesClass(AbstractSpan::class)]
 #[UsesClass(Span::class)]
 #[UsesClass(NullSpan::class)]
+#[UsesClass(RequestedUrl::class)]
+#[UsesClass(SymfonyUrlResolver::class)]
 #[UsesClass(NullProfilingFactory::class)]
 #[RequiresMethod(MockHttpClient::class, 'request')]
 final class ProfilingHttpClientTest extends TestCase

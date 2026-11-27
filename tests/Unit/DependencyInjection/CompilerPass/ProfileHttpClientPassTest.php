@@ -24,6 +24,7 @@ use Symfony\Component\HttpClient\DecoratorTrait;
 
 #[CoversClass(ProfileHttpClientPass::class)]
 #[UsesClass(AutoSpan::class)]
+#[UsesClass(ProfilingHttpClient::class)]
 final class ProfileHttpClientPassTest extends TestCase
 {
     public function testDecoratesTheSharedTransportOutsideTheOtherFamilyDecorators(): void
