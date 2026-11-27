@@ -38,3 +38,14 @@
   `tests/Unit/Fixture/` (класс на уровне файла теста грузится вместе с тестом).
   Локальная проверка: копия репо без vendor, `rm composer.lock`, `composer update` по
   `composer.json`, затем `vendor/bin/phpunit` → 69 тестов, 16 skipped.
+- Auto span (2.2): unit — `tests/Unit/Infrastructure/{Doctrine/DBAL,HttpClient,Guzzle}`, `tests/Unit/DependencyInjection`,
+  `tests/Unit/ProfilingBundleTest` (дерево конфига; недостающие пакеты подставляются через
+  `new ProfilingBundle(new AutoSpanRequirements([...]))`), `tests/Unit/Application/DetachedSpanTest`. Фикстуры:
+  `RecordingProfiling::factory()` (настоящая фабрика + `RecordingEndProcessor`, у которого теперь есть `spans`),
+  `RecordingDetachedFactory` (считает повторные `endSpan()`), `RecordingStatement` (DBAL 3/4), `Fixture/Guzzle/*`.
+  Integration — `AutoSpansKernelTest` + `Kernel/AutoSpans/AutoSpansKernel` (sqlite in-memory в обоих порядках бандлов,
+  `mock_response_factory` FrameworkBundle как транспорт, Guzzle-клиент с `MockHandler`); каждый тест сам себя
+  пропускает без библиотеки. Тесты с опциональными типами помечены `#[RequiresMethod(<interface>::class, ...)]`.
+  Ядро `AutoSpansKernel`: соединения `default` и `replica`, scoped-клиенты `test.scoped_client` и
+  `test.retrying_client` (`retry_failed`, `/flaky` один раз 503), окружения `decorated_factory`/`decorated_alias`
+  (декоратор фабрики `RecordingFactoryDecorator`).

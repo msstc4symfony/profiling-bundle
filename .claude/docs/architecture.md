@@ -29,13 +29,80 @@
    `messenger:consume` зовёт `kernel.reset` после каждого сообщения. `endAll()` закрывает всё. `endSpan()` — для любого кода фреймворка (listener'ы бандла).
    Неявно закрытые дети получают контекст `ProfilingFactory::IMPLICIT_END`.
 
+## Отвязанные span (2.2)
+
+`DetachedSpanFactoryInterface extends ProfilingFactoryInterface` (`createDetachedSpan()`, константы `DETACHED` =
+`['profiling_detached' => true]` и `AUTOMATIC` = `['profiling_automatic' => true]`); реализуют `ProfilingFactory` и
+`NullProfilingFactory`. Интерфейс расширяет `ProfilingFactoryInterface`, чтобы адаптеры закрывали span через
+`endSpan()` (без исключений) и инжектили один сервис; методов в `ProfilingFactoryInterface`/`SpanInterface` не
+добавлено (Roave BC).
+
+- `createSpan()` и `createDetachedSpan()` делят приватный `open()` (assemblers → create processors, родитель —
+  вершина стека). Отвязанный span не попадает в `activeSpans`, а в `SplObjectStorage $detachedSpans` (порядок
+  создания, O(1) удаление); его handler — `onDetachedEnd()`: `forgetDetached()` (`false` → уже обработан, второй
+  вызов handler'а ничего не делает), затем общая очередь `endedSpans` и `processEndedSpans()`.
+- Маркер мерджится последним (`[...$context, ...DETACHED]`): контекст вызывающего его не перетирает.
+- `OUTGOING_REQUEST` = `['profiling_outgoing_request' => true]` (2.3.0) ставит `OutgoingRequestSpan::context()` спанам HttpClient и Guzzle: по нему tracing-bridge-profiling 1.3 резервирует span id для `traceparent` запроса (спек `docs/superpowers/specs/2026-10-27-client-span-traceparent-design.md`). Пользовательские detached-спаны его не несут.
+- `endOpenSpans()` (и `endAll()`, и `reset()`) раундами: все отвязанные (клон списка + `forgetDetached()` — span
+  со снятым handler'ом иначе зациклил бы), потом снимок стека на начало раунда (`endStack()`, сверху вниз, с
+  остановкой на `keepOpenOnReset()`); span, открытые в раунде, ждут следующего. Повтор, пока есть отвязанные или
+  стек не «устоялся» (`isStackSettled()`: пуст или наверху открытый помеченный span); отвязанные, открытые на любой фазе, закрываются в следующем раунде. Не больше
+  `MAX_END_PASSES` (64) раундов, затем `log()` — процессор, открывающий span (стековый или отвязанный) на каждый
+  span, иначе крутил бы цикл вечно.
+- Пользовательский span, бросающий из `setParentSpan()` (`adopt()`) или `addEndHandler()` (`bind()`), логируется;
+  без handler'а фабрики span не попадает ни в стек, ни в список отвязанных. Все логи ошибок — через `log()`.
+- `onEnd()`: счётчик `$settling` — пока дети закрываются (`endAt()` с их handler'ами), `processEndedSpans()` сразу
+  возвращается; очередь разбирается в `finally` после всех детей. Раньше handler ребёнка, закрывший другой span,
+  запускал процессоры, пока братья ещё были открыты.
+- Отвязанный span может закончиться позже родителя — гарантия 2.1 «ребёнок не переживает родителя» его не касается.
+
+### Защита от обратной связи
+
+Пока идёт `processEndedSpans()` (`$this->processing`) или другой `open()` (счётчик `$opening`: assemblers,
+decision makers, create processors), `open()` отдаёт `NullSpan` для контекста с `AUTOMATIC`
+(`array_intersect_key($context, AUTOMATIC) === AUTOMATIC`). Иначе end-процессор, пишущий через инструментированную
+библиотеку (Monolog-handler канала `profiling` в DBAL/HTTP), создавал бы span на каждый span — бесконечный цикл
+(проверено: без guard'а тест падает по памяти). Ручные span из процессоров по-прежнему записываются.
+
+## Автоматические span (2.2)
+
+Единый источник ключей — `DependencyInjection/AutoSpan` (enum: `option()` = имя опции и параметра контейнера
+`msstc4symfony_profiling.auto_spans.<x>`, `isEnabledIn()`, `info()`, `packages()`). `AutoSpanRequirements` проверяет
+пакеты (в тестах — подменённая карта через `new ProfilingBundle(new AutoSpanRequirements([...]))`).
+
+| Опция | Адаптер (`Infrastructure/`) | Проводка (`DependencyInjection/CompilerPass/`) |
+|---|---|---|
+| `dbal` | `Doctrine/DBAL/QuerySpansMiddleware` (опц. `SqlLabelling`) → `Driver` → `Connection` (`query`, `exec`) / `Statement` (`execute`); общий `QuerySpans` | `ProfileDoctrineDbalPass` (BEFORE_OPTIMIZATION, priority 1): `doctrine.middleware` с `connection: <name>`, `priority: -100` на каждое соединение из `doctrine.connections`, id `msstc4symfony_profiling.doctrine.middleware.<name>` |
+| `http_client` | `HttpClient/ProfilingHttpClient` + `ProfiledResponse` + `CompletionStreamFilter` | `ProfileHttpClientPass`: декоратор `http_client.transport.decorator.profiling`, priority -25 |
+| `guzzle` | `Guzzle/ProfilingGuzzleMiddleware` (`unshift()` — внешний), `Guzzle/ChainedClientConfigurator` | `RegisterGuzzleMiddlewarePass` (BEFORE_OPTIMIZATION) регистрирует middleware; `ProfileGuzzlePass` (BEFORE_REMOVING) — только переписывает клиентов: `handler` в конфиге `GuzzleHttp\Client` (если это `HandlerStack` — по классу или статической фабрике `[HandlerStack::class, 'create']` — или `null`; иначе запись в compiler log; разбор — `constructorConfig()` + `profileThroughConfig()`), configurator `addHandler`, иначе compiler log |
+
+- Все три адаптера получают фабрику по `Reference(DetachedSpanFactoryInterface::class)` — один алиас.
+  Декоратор фабрики должен декорировать сервис `ProfilingFactory` и реализовать `DetachedSpanFactoryInterface`
+  (тест `AutoSpansKernelTest::testADecoratedFactoryReceivesTheAutomaticSpans`, оба варианта).
+- Имя и контекст HTTP span — `Infrastructure/OutgoingRequestSpan` (`message()`, `context()`: `url_path` с
+  заменой UUID/чисел/длинного hex на `:uuid`/`:id`/`:hash`, правила metrics-bundle `PathSanitizer`, скопированы;
+  плюс `AUTOMATIC`).
+- `QuerySpans` — вложенный span (`createSpan`); сбой `label()`/`createSpan()` → запрос без span; `endSpan()` в
+  `finally` обёрнут в try/catch (не подменяет результат/исключение запроса); исключение →
+  `['exception' => get_debug_type($e)]` (класс драйвера, до конвертера DBAL) и rethrow. Fetch строк в span не входит.
+- `ProfiledResponse` закрывает span (флаг `ended`, один `endSpan()`): конец тела / ошибка (`exception` + `status`,
+  если `http_code` > 0) / `cancel()` (`cancelled` без статуса или `body_cancelled` со статусом — так заканчиваются
+  попытки `RetryableHttpClient`) / закрытие потока `toStream()` (`stream_closed`; оба callback фильтра сначала зовут `failIfTransportError()` —
+  обрыв посреди тела даёт `exception`) / `__destruct` (`response_destroyed`).
+  `ProfilingHttpClient::request()`: исключение внутреннего `request()` → span с `exception` и rethrow; ошибка самой
+  фабрики → ответ без обёртки.
+- Guzzle: span закрывается в `then()` промиса: fulfilled → `status` (если это `ResponseInterface`), rejected →
+  `exception` (+ `status`, если у причины есть `getResponse()`); синхронное исключение handler'а → `exception` и
+  rethrow; ошибка фабрики → запрос без span.
+
 ## Подключение
 
 - `ProfilingBundle` (`AbstractBundle`, alias `msstc4symfony_profiling`): дерево конфига →
   параметры `msstc4symfony_profiling.{routes,commands,messages}.whitelist`,
   `msstc4symfony_profiling.spans.{whitelist,blacklist}`.
-- `services.php`: `load()` всего namespace (кроме `ProfilingBundle.php`, `Resources/`, и
-  `MessageEventListener` без `symfony/messenger`), autowire + autoconfigure. `kernel.reset` —
+- `services.php`: `load()` всего namespace (кроме `ProfilingBundle.php`, `Resources/`, `Infrastructure/`,
+  `DependencyInjection/` и `MessageEventListener` без `symfony/messenger`), autowire + autoconfigure. Алиас
+  `DetachedSpanFactoryInterface` → `ProfilingFactory` (приватный). `kernel.reset` —
   через autoconfigure по `ResetInterface`. Алиас `ProfilingFactoryInterface` приватный.
 - Listener'ы: `Request`/`Message` — `ResetInterface`; `Console` — нет (его span живёт до
   `console.terminate`). События: `kernel.request` (main, не OPTIONS, `_route` в whitelist) /
@@ -56,8 +123,10 @@
 
 С 2.0 — канонический шаблон bundle-standard v3: `Application` (ядро: фабрика, спаны, ассемблеры, decision
 makers, процессоры; бывший `Framework/` — это не точки расширения Symfony) ни от чего; `Presentation`
-(`Presentation/EventListener/*`, бывший `EventListener/`) → `Application`; `ProfilingBundle` (BundleRoot) — ни от
-чего внутри бандла. Публичный API — раздел README «Public API»; `@internal`: listener'ы, `ListBasedDecisionMaker`,
+(`Presentation/EventListener/*`, бывший `EventListener/`) → `Application`. С 2.2 добавлены (возвращены из
+канонического ruleset): `Infrastructure` → `Application`; `DependencyInjection` → `Application`, `Infrastructure`;
+`ProfilingBundle` (BundleRoot) → `DependencyInjection` (не `Infrastructure`: поэтому Guzzle middleware
+регистрирует `RegisterGuzzleMiddlewarePass`, а не `loadExtension()`). Все новые классы `Infrastructure/` и `DependencyInjection/` — `@internal`. Публичный API — раздел README «Public API»; `@internal`: listener'ы, `ListBasedDecisionMaker`,
 `LoggerProcessor`. Мосты (`metrics-bridge-profiling`, `profiling-bridge-logic`) в тестах создают
 `ProfilingFactory` и `SpanAssembler` напрямую — поэтому оба публичные.
 
